@@ -36,6 +36,8 @@ export interface Edge {
 
 export interface BoardNode {
   id: string;
+  /** 画面上の位置（マス目単位）。ルールでは使わない */
+  pos?: [number, number];
   type: SquareType;
   next: Edge[];
   /** 関所の通過条件 */

@@ -9,6 +9,7 @@
 
 ```bash
 npm install
+npm run dev         # 開発用サーバーを起動（http://localhost:5173）
 npm test            # 自動テスト
 npm run typecheck   # 型チェック
 npm run simulate    # CPUどうしで1000ゲーム行い、バランスの目安を表示（例: npm run simulate -- 500 3）
@@ -19,6 +20,8 @@ npm run simulate    # CPUどうしで1000ゲーム行い、バランスの目安
 | フォルダ | 内容 |
 |---|---|
 | `src/core/` | ゲームのルール（描画・通信に依存しない） |
+| `src/scenes/` | ボードとコマの描画（Phaser） |
+| `src/ui/` | 手札・ボタン・確認画面などのHTMLのUI、1台での対戦の進行 |
 | `src/ai/` | CPUの思考、自動対戦 |
 | `src/data/` | カード・ボードのデータ（JSON） |
 | `tests/` | 自動テスト |

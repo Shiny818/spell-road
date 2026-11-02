@@ -1,0 +1,434 @@
+:root {
+  --bg: #fdf6ec;
+  --ink: #4a3b2a;
+  --sub: #8a7660;
+  --panel: #fffaf2;
+  --line: #e4d6c2;
+  --primary: #9b6dd6;
+  --primary-ink: #ffffff;
+  --glow: #ffd84d;
+  font-family: 'Hiragino Maru Gothic ProN', 'BIZ UDPGothic', 'Meiryo', system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #e9dfcf;
+  overscroll-behavior: none;
+}
+
+#app {
+  max-width: 480px;
+  height: 100dvh;
+  margin: 0 auto;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  height: 100%;
+}
+
+/* ---- タイトル ---- */
+
+#title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+#title h1 {
+  margin: 0;
+  font-size: 32px;
+}
+
+.subtitle,
+.note {
+  margin: 0;
+  color: var(--sub);
+  font-size: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--sub);
+  width: 100%;
+  max-width: 280px;
+}
+
+.field input {
+  font: inherit;
+  font-size: 18px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  text-align: center;
+  color: var(--ink);
+}
+
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+
+.segmented .btn {
+  flex: 1;
+}
+
+.segmented .btn.selected {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-color: var(--primary);
+}
+
+/* ---- ボタン ---- */
+
+.btn {
+  font: inherit;
+  font-size: 15px;
+  font-weight: bold;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-ink);
+}
+
+.btn.big {
+  font-size: 18px;
+  padding: 14px 40px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- ゲーム画面 ---- */
+
+#game {
+  display: flex;
+  flex-direction: column;
+}
+
+#players {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel);
+  border-bottom: 2px solid var(--line);
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  border-left: 6px solid var(--pc);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.chip.current {
+  border-color: var(--pc);
+  background: #fff;
+}
+
+.chip-name {
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-info {
+  margin-left: auto;
+  color: var(--sub);
+  white-space: nowrap;
+}
+
+#board {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}
+
+#board canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+#panel {
+  background: var(--panel);
+  border-top: 2px solid var(--line);
+  padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#message {
+  min-height: 54px;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+#message .latest {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--ink);
+}
+
+#hand,
+.card-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px;
+}
+
+.empty-hand {
+  color: var(--sub);
+  font-size: 13px;
+  padding: 24px 0;
+  width: 100%;
+  text-align: center;
+}
+
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 46px;
+}
+
+#actions .hint,
+#actions .waiting {
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+/* ---- カード ---- */
+
+.card {
+  flex: 0 0 auto;
+  width: 76px;
+  height: 100px;
+  border-radius: 10px;
+  border: 3px solid var(--ac);
+  background: linear-gradient(180deg, #fff 55%, color-mix(in srgb, var(--ac) 18%, #fff));
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.card.playable {
+  box-shadow: 0 0 0 3px var(--glow), 0 0 12px var(--glow);
+  transform: translateY(-3px);
+}
+
+.card.selected {
+  box-shadow: 0 0 0 3px var(--primary);
+  transform: translateY(-3px);
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+}
+
+.card-attr {
+  background: var(--ac);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: bold;
+}
+
+.card-rarity {
+  color: #d4a017;
+}
+
+.card-name {
+  font-weight: bold;
+  font-size: 13px;
+  text-align: center;
+  margin: auto 0;
+}
+
+.card-timing {
+  font-size: 9px;
+  color: var(--sub);
+  text-align: center;
+}
+
+.card.large {
+  width: 120px;
+  height: 160px;
+  margin: 0 auto;
+  cursor: default;
+}
+
+.card.large .card-name {
+  font-size: 18px;
+}
+
+.card-text {
+  text-align: center;
+  font-size: 15px;
+  margin: 12px 0 4px;
+}
+
+.card-sub {
+  text-align: center;
+  font-size: 12px;
+  color: var(--sub);
+  margin: 4px 0;
+}
+
+/* ---- ダイス ---- */
+
+#dice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 20;
+  animation: pop 0.25s ease-out;
+}
+
+.dice-faces {
+  font-size: 72px;
+  line-height: 1;
+  filter: drop-shadow(0 4px 6px #0004);
+}
+
+.dice-value {
+  font-size: 40px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 2px 6px #0008;
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* ---- 確認画面 ---- */
+
+#modal {
+  position: absolute;
+  inset: 0;
+  background: #0006;
+  display: flex;
+  align-items: flex-end;
+  z-index: 30;
+}
+
+#modal-body {
+  width: 100%;
+  max-height: 90%;
+  overflow-y: auto;
+  background: var(--panel);
+  border-radius: 20px 20px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  animation: slide 0.2s ease-out;
+}
+
+#modal-body h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  text-align: center;
+}
+
+#modal-body > p {
+  text-align: center;
+  font-size: 14px;
+  margin: 6px 0;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+@keyframes slide {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+.ranking {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.ranking li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+  font-size: 16px;
+}
+
+.ranking .rank {
+  font-weight: bold;
+  width: 36px;
+}
+
+.ranking .rest {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--sub);
+}
