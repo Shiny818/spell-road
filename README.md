@@ -5,6 +5,11 @@
 - 仕様書: [docs/spec.md](docs/spec.md)
 - カードリスト: [docs/cards.md](docs/cards.md)
 
+## テストプレイ
+
+`testplay.bat` をダブルクリックすると、開発用サーバーが起動してブラウザでゲームが開きます（http://localhost:5180）。
+初回は必要なパッケージを自動でインストールします。終了するときは黒いウィンドウを閉じてください。
+
 ## 開発
 
 ```bash
