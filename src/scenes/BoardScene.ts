@@ -17,6 +17,9 @@ const SLOT_OFFSETS = [
 
 const hex = (c: string) => Number.parseInt(c.slice(1), 16);
 
+/** 画面の画素密度。スマホでぼやけないよう、この倍率で描く */
+export const PIXEL_RATIO = Math.min(window.devicePixelRatio || 1, 3);
+
 export class BoardScene extends Phaser.Scene {
   private board!: BoardDef;
   private pieces: Phaser.GameObjects.Container[] = [];
@@ -78,7 +81,7 @@ export class BoardScene extends Phaser.Scene {
       const [x, y] = this.nodeXY(n.id);
       const style = SQUARE_STYLE[n.type];
       this.add.circle(x, y, RADIUS, hex(style.color)).setStrokeStyle(3, 0x6b5638);
-      if (style.icon) this.add.text(x, y, style.icon, { fontSize: '26px' }).setOrigin(0.5);
+      if (style.icon) this.addText(x, y, style.icon, { fontSize: '26px' }).setOrigin(0.5);
 
       if (n.type === 'gate' && n.gate) {
         // 通過条件と、分岐先ごとの出目
@@ -89,7 +92,7 @@ export class BoardScene extends Phaser.Scene {
             this.label((x + ex) / 2, (y + ey) / 2, e.dice!.join('・'), '#7a2e2e');
           }
         }
-        const crack = this.add.text(x, y + RADIUS + 12, '', { fontSize: '13px', color: '#7a2e2e', fontStyle: 'bold' });
+        const crack = this.addText(x, y + RADIUS + 12, '', { fontSize: '13px', color: '#7a2e2e', fontStyle: 'bold' });
         crack.setOrigin(0.5);
         this.crackTexts.set(n.id, crack);
       }
@@ -99,7 +102,7 @@ export class BoardScene extends Phaser.Scene {
     state.players.forEach((_, i) => {
       const [x, y] = this.pieceXY(i);
       const body = this.add.circle(0, 0, 16, hex(PLAYER_COLORS[i])).setStrokeStyle(3, 0xffffff);
-      const icon = this.add.text(0, 0, PLAYER_ICONS[i], { fontSize: '18px' }).setOrigin(0.5);
+      const icon = this.addText(0, 0, PLAYER_ICONS[i], { fontSize: '18px' }).setOrigin(0.5);
       this.pieces.push(this.add.container(x, y, [body, icon]).setDepth(10 + i));
     });
 
@@ -119,7 +122,7 @@ export class BoardScene extends Phaser.Scene {
     for (const id of Object.keys(state.traps)) {
       if (this.trapIcons.has(id)) continue;
       const [x, y] = this.nodeXY(id);
-      this.trapIcons.set(id, this.add.text(x + 18, y - 22, '🔥', { fontSize: '22px' }).setOrigin(0.5).setDepth(5));
+      this.trapIcons.set(id, this.addText(x + 18, y - 22, '🔥', { fontSize: '22px' }).setOrigin(0.5).setDepth(5));
     }
     for (const [gate, text] of this.crackTexts) {
       const cracks = state.players
@@ -184,7 +187,7 @@ export class BoardScene extends Phaser.Scene {
   private fitCamera(): void {
     const cam = this.cameras.main;
     const w = this.scale.width;
-    cam.setZoom(Math.min(1.1, w / this.worldW));
+    cam.setZoom(Math.min(1.1 * PIXEL_RATIO, w / this.worldW));
     cam.setBounds(0, 0, this.worldW, this.worldH);
   }
 
@@ -200,15 +203,18 @@ export class BoardScene extends Phaser.Scene {
     return [x + dx, y + dy];
   }
 
+  private addText(x: number, y: number, text: string, style: Phaser.Types.GameObjects.Text.TextStyle) {
+    return this.add.text(x, y, text, { ...style, resolution: PIXEL_RATIO * 1.1 });
+  }
+
   private label(x: number, y: number, text: string, color: string): void {
-    this.add
-      .text(x, y, text, {
-        fontSize: '13px',
-        color,
-        fontStyle: 'bold',
-        backgroundColor: '#ffffffcc',
-        padding: { x: 4, y: 1 },
-      })
+    this.addText(x, y, text, {
+      fontSize: '13px',
+      color,
+      fontStyle: 'bold',
+      backgroundColor: '#ffffffcc',
+      padding: { x: 4, y: 1 },
+    })
       .setOrigin(0.5)
       .setDepth(4);
   }

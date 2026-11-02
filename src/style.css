@@ -22,6 +22,8 @@ body {
   height: 100%;
   background: #e9dfcf;
   overscroll-behavior: none;
+  /* ダブルタップでの拡大を防ぐ */
+  touch-action: manipulation;
 }
 
 #app {

@@ -5,7 +5,7 @@ import forest from '../data/boards/forest.json';
 import { buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../core/cards';
 import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate } from '../core/engine';
 import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../core/types';
-import { BoardScene } from '../scenes/BoardScene';
+import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
 import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
@@ -73,7 +73,13 @@ export class App implements GameView {
         type: Phaser.AUTO,
         parent: boardEl,
         backgroundColor: '#bfe3b4',
-        scale: { mode: Phaser.Scale.NONE, width: boardEl.clientWidth, height: boardEl.clientHeight },
+        // 内部は画素密度ぶん大きく描き、表示は元の大きさに縮める（スマホでぼやけないように）
+        scale: {
+          mode: Phaser.Scale.NONE,
+          width: boardEl.clientWidth * PIXEL_RATIO,
+          height: boardEl.clientHeight * PIXEL_RATIO,
+          zoom: 1 / PIXEL_RATIO,
+        },
         scene: [this.scene],
       });
       // 手札の量などでボードの表示領域の大きさが変わるので、そのたびに合わせる
@@ -126,8 +132,10 @@ export class App implements GameView {
   private fitBoard(): void {
     const scale = this.phaser?.scale;
     const boardEl = $('#board');
-    if (!scale || (scale.width === boardEl.clientWidth && scale.height === boardEl.clientHeight)) return;
-    scale.resize(boardEl.clientWidth, boardEl.clientHeight);
+    const w = Math.floor(boardEl.clientWidth * PIXEL_RATIO);
+    const h = Math.floor(boardEl.clientHeight * PIXEL_RATIO);
+    if (!scale || (scale.width === w && scale.height === h)) return;
+    scale.resize(w, h);
   }
 
   // ============================================================
