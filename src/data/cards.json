@@ -1,0 +1,34 @@
+[
+  { "id": "oikaze", "name": "追い風", "attribute": "wind", "rarity": 1, "timings": ["start"], "usableAtGate": false, "attack": false, "mvp": true, "text": "このターンの移動マス数+2" },
+  { "id": "tabi_no_kaze", "name": "旅の風", "attribute": "wind", "rarity": 1, "timings": ["end"], "usableAtGate": false, "attack": false, "mvp": false, "text": "1マス進む。止まったマスの効果も発動する" },
+  { "id": "shippu", "name": "疾風", "attribute": "wind", "rarity": 2, "timings": ["start"], "usableAtGate": false, "attack": false, "mvp": true, "text": "このターンはダイスを2個振り、合計で進む" },
+  { "id": "tsumujikaze", "name": "つむじ風", "attribute": "wind", "rarity": 2, "timings": ["start"], "usableAtGate": false, "attack": true, "mvp": true, "text": "自分より1つ前にいるプレイヤーと位置を入れ替える" },
+  { "id": "daisenpu", "name": "大旋風", "attribute": "wind", "rarity": 3, "timings": ["start"], "usableAtGate": false, "attack": false, "mvp": false, "text": "このターンはダイスを3個振り、合計で進む" },
+
+  { "id": "unmei_no_hari", "name": "運命の針", "attribute": "time", "rarity": 1, "timings": ["afterRoll"], "usableAtGate": true, "attack": false, "mvp": true, "text": "出目を+1か-1する" },
+  { "id": "makimodoshi", "name": "巻き戻し", "attribute": "time", "rarity": 1, "timings": ["afterRoll"], "usableAtGate": true, "attack": false, "mvp": true, "text": "ダイスを振り直す" },
+  { "id": "baisoku", "name": "倍速", "attribute": "time", "rarity": 2, "timings": ["afterRoll"], "usableAtGate": false, "attack": false, "mvp": false, "text": "出目を2倍にする" },
+  { "id": "hoshiyomi", "name": "星読み", "attribute": "time", "rarity": 3, "timings": ["afterRoll"], "usableAtGate": true, "attack": false, "mvp": true, "text": "出目を1〜6の好きな数にする" },
+  { "id": "jikan_teishi", "name": "時間停止", "attribute": "time", "rarity": 3, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": false, "text": "このターンの後、もう一度自分のターンを行う" },
+
+  { "id": "honoo_no_tsubute", "name": "炎のつぶて", "attribute": "fire", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を2マス戻す" },
+  { "id": "honoo_no_mahoujin", "name": "炎の魔法陣", "attribute": "fire", "rarity": 1, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": true, "text": "今いるマスに罠を置く。踏んだ人は移動が止まり、3マス戻る" },
+  { "id": "kaen", "name": "火炎", "attribute": "fire", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を4マス戻す" },
+  { "id": "bakuen", "name": "爆炎", "attribute": "fire", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分以外の全員を3マス戻す" },
+
+  { "id": "shimo_no_noroi", "name": "霜の呪い", "attribute": "ice", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人の次の出目-2" },
+  { "id": "itetsuku_yuka", "name": "凍てつく床", "attribute": "ice", "rarity": 1, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": false, "text": "今いるマスに罠を置く。踏んだ人はそこで移動が止まる" },
+  { "id": "hyouketsu", "name": "氷結", "attribute": "ice", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を1回休みにする" },
+  { "id": "fubuki", "name": "吹雪", "attribute": "ice", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分以外の全員の次の移動マス数が半分" },
+
+  { "id": "hikari_no_kabe", "name": "光の壁", "attribute": "light", "rarity": 1, "timings": ["counter"], "usableAtGate": true, "attack": false, "mvp": true, "text": "自分への攻撃を1回無効にする" },
+  { "id": "shukufuku", "name": "祝福", "attribute": "light", "rarity": 1, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": true, "text": "カードを2枚引く" },
+  { "id": "jouka", "name": "浄化", "attribute": "light", "rarity": 1, "timings": ["start"], "usableAtGate": true, "attack": false, "mvp": false, "text": "自分の悪い状態異常をすべて解除する" },
+  { "id": "hansha_no_kagami", "name": "反射の鏡", "attribute": "light", "rarity": 2, "timings": ["counter"], "usableAtGate": true, "attack": false, "mvp": true, "text": "自分への攻撃を、攻撃してきた人にはね返す（罠には使えない）" },
+  { "id": "seinaru_kago", "name": "聖なる加護", "attribute": "light", "rarity": 2, "timings": ["start"], "usableAtGate": true, "attack": false, "mvp": false, "text": "次の自分のターンが始まるまで攻撃を受けない" },
+
+  { "id": "boukyaku", "name": "忘却", "attribute": "dark", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "相手1人の手札をランダムに1枚捨てさせる" },
+  { "id": "nusumi_no_kage", "name": "盗みの影", "attribute": "dark", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人の手札をランダムに1枚奪う" },
+  { "id": "yami_no_torihiki", "name": "闇の取引", "attribute": "dark", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分の手札1枚と、相手1人の手札ランダム1枚を交換する" },
+  { "id": "noroi_no_fuin", "name": "呪いの封印", "attribute": "dark", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "相手1人は次の自分のターンが終わるまでカードを使えない" }
+]
