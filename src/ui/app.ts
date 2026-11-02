@@ -15,6 +15,8 @@ const CPU_NAMES = ['ルル', 'ポポ', 'ミミ'];
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 使われたカードを表示しておく時間 */
+const CARD_SHOW_MS = { cpu: 2400, human: 1000 };
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -112,6 +114,7 @@ export class App implements GameView {
       const text = describeEvent(e, state);
       if (text) this.pushMessage(text);
       if (e.type === 'roll') await this.showDice(e.dice, e.value);
+      else if (e.type === 'cardPlayed' || e.type === 'countered') await this.showCardUse(e, state);
       else if (e.type === 'step' || e.type === 'pushedBack' || e.type === 'swapped') await this.scene.animate(e);
       else if (e.type === 'turnStart') {
         void this.scene.animate(e);
@@ -158,6 +161,36 @@ export class App implements GameView {
     );
     box.classList.remove('hidden');
     await sleep(750);
+    box.classList.add('hidden');
+  }
+
+  /** 使われたカードを大きく見せる。CPUのカードは読めるように長めに出す（タップで閉じられる） */
+  private async showCardUse(e: Extract<GameEvent, { type: 'cardPlayed' | 'countered' }>, s: GameState): Promise<void> {
+    const name = (i: number) => `${PLAYER_ICONS[i]} ${s.players[i].name}`;
+    let result = '';
+    if (e.type === 'cardPlayed' && e.target !== undefined) result = `→ ${name(e.target)}に`;
+    if (e.type === 'countered') result = `${s.players[e.attacker].name}の攻撃を${e.reflected ? 'はね返した！' : '防いだ！'}`;
+
+    const box = $('#cast');
+    box.replaceChildren(
+      el('div', { class: 'cast-body', style: `--pc:${PLAYER_COLORS[e.player]}` }, [
+        el('div', { class: 'cast-who', text: `${name(e.player)}の魔法！` }),
+        this.cardElement({ uid: -1, cardId: e.cardId }, 'large'),
+        el('p', { class: 'card-text', text: getCardDef(e.cardId).text }),
+        ...(result ? [el('div', { class: 'cast-result', text: result })] : []),
+        el('div', { class: 'cast-skip', text: 'タップで次へ' }),
+      ]),
+    );
+    box.classList.remove('hidden');
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        box.removeEventListener('click', done);
+        resolve();
+      };
+      const timer = setTimeout(done, e.player === HUMAN ? CARD_SHOW_MS.human : CARD_SHOW_MS.cpu);
+      box.addEventListener('click', done);
+    });
     box.classList.add('hidden');
   }
 

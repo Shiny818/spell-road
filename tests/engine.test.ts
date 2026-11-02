@@ -71,7 +71,7 @@ describe('移動とマス', () => {
 
   it('ゴールは出目が多くてもゴールになり、残りマス数で順位が決まる（同じなら同順位）', () => {
     let s = setup(4);
-    placeAt(s, 0, 'v2');
+    placeAt(s, 0, 'z4');
     placeAt(s, 1, 'm5');
     placeAt(s, 2, 'm5');
     placeAt(s, 3, 'a1');

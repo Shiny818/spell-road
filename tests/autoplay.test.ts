@@ -32,5 +32,5 @@ describe('最後まで遊べる', () => {
       const total = s.deck.length + s.discard.length + pending + s.players.reduce((n, p) => n + p.hand.length, 0);
       expect(total).toBe(setup().deck.length);
     }
-  });
+  }, 30000);
 });

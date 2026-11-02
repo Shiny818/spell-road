@@ -434,3 +434,43 @@ body {
   font-size: 13px;
   color: var(--sub);
 }
+
+/* ---- 使われたカード ---- */
+
+#cast {
+  position: absolute;
+  inset: 0;
+  background: #0005;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  animation: pop 0.2s ease-out;
+}
+
+.cast-body {
+  width: min(300px, 85%);
+  background: var(--panel);
+  border-radius: 20px;
+  padding: 16px;
+  text-align: center;
+  border-top: 8px solid var(--pc);
+}
+
+.cast-who {
+  font-size: 17px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.cast-result {
+  font-size: 15px;
+  font-weight: bold;
+  margin-top: 10px;
+}
+
+.cast-skip {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 8px;
+}
