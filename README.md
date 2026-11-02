@@ -4,6 +4,7 @@
 
 - 仕様書: [docs/spec.md](docs/spec.md)
 - カードリスト: [docs/cards.md](docs/cards.md)
+- 素材リスト: [docs/assets.md](docs/assets.md)
 
 ## テストプレイ
 
