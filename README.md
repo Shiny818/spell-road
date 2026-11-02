@@ -9,7 +9,7 @@
 
 ```bash
 npm install
-npm run dev         # 開発用サーバーを起動（http://localhost:5173）
+npm run dev         # 開発用サーバーを起動（http://localhost:5180）
 npm test            # 自動テスト
 npm run typecheck   # 型チェック
 npm run simulate    # CPUどうしで1000ゲーム行い、バランスの目安を表示（例: npm run simulate -- 500 3）
