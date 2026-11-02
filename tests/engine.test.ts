@@ -123,16 +123,16 @@ describe('移動とマス', () => {
 describe('関所', () => {
   it('通過しようとしても関所で止まる', () => {
     let s = setup();
-    placeAt(s, 0, 'a6');
+    placeAt(s, 0, 'b7');
     s.forcedDice = [5];
     s = run(s, roll(0), move(0));
-    expect(at(s, 0)).toBe('g1');
+    expect(at(s, 0)).toBe('g2');
   });
 
   it('条件に合わない目なら進めず、ひびが入る', () => {
     let s = setup();
     placeAt(s, 0, 'g2');
-    s.forcedDice = [3];
+    s.forcedDice = [2];
     s = run(s, roll(0), move(0));
     expect(at(s, 0)).toBe('g2');
     expect(s.players[0].gateCracks.g2).toBe(1);
@@ -147,9 +147,15 @@ describe('関所', () => {
 
     let t = setup();
     placeAt(t, 0, 'g2');
-    t.forcedDice = [4];
+    t.forcedDice = [3];
     t = run(t, roll(0), move(0));
     expect(at(t, 0)).toBe('l1');
+
+    let u = setup();
+    placeAt(u, 0, 'g3');
+    u.forcedDice = [4];
+    u = run(u, roll(0), move(0));
+    expect(at(u, 0)).toBe('v1');
   });
 
   it('ひびが3本入ると次のターンは必ず抜けられる', () => {
@@ -180,20 +186,20 @@ describe('関所', () => {
 
   it('通過した関所より前には戻されない', () => {
     let s = setup();
-    placeAt(s, 1, 'b2');
+    placeAt(s, 1, 'l2');
     const uid = give(s, 0, 'kaen');
     s = run(s, { type: 'playCard', player: 0, uid, target: 1 });
-    expect(at(s, 1)).toBe('b1');
+    expect(at(s, 1)).toBe('l1');
   });
 
   it('関所で止まっている人は戻されると関所から離れ、ひびは残る', () => {
     let s = setup();
-    placeAt(s, 1, 'g1');
-    s.players[1].gateCracks.g1 = 2;
+    placeAt(s, 1, 'g2');
+    s.players[1].gateCracks.g2 = 2;
     const uid = give(s, 0, 'honoo_no_tsubute');
     s = run(s, { type: 'playCard', player: 0, uid, target: 1 });
-    expect(at(s, 1)).toBe('a6');
-    expect(s.players[1].gateCracks.g1).toBe(2);
+    expect(at(s, 1)).toBe('b7');
+    expect(s.players[1].gateCracks.g2).toBe(2);
   });
 });
 
@@ -280,8 +286,9 @@ describe('攻撃とカウンター', () => {
     placeAt(s, 2, 'a7');
     expect(swapTargets(s, 0)).toEqual([1]);
 
-    placeAt(s, 1, 'b1');
-    placeAt(s, 2, 'b3');
+    placeAt(s, 0, 'b2');
+    placeAt(s, 1, 'l1');
+    placeAt(s, 2, 'l3');
     expect(swapTargets(s, 0)).toEqual([]);
   });
 
