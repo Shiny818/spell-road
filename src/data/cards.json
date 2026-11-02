@@ -11,13 +11,13 @@
   { "id": "hoshiyomi", "name": "星読み", "attribute": "time", "rarity": 3, "timings": ["afterRoll"], "usableAtGate": true, "attack": false, "mvp": true, "text": "出目を1〜6の好きな数にする" },
   { "id": "jikan_teishi", "name": "時間停止", "attribute": "time", "rarity": 3, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": false, "text": "このターンの後、もう一度自分のターンを行う" },
 
-  { "id": "honoo_no_tsubute", "name": "炎のつぶて", "attribute": "fire", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を2マス戻す" },
-  { "id": "honoo_no_mahoujin", "name": "炎の魔法陣", "attribute": "fire", "rarity": 1, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": true, "text": "今いるマスに罠を置く。踏んだ人は移動が止まり、3マス戻る" },
+  { "id": "honoo_no_tsubute", "name": "炎のつぶて", "attribute": "fire", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を2マス戻す" },
+  { "id": "honoo_no_mahoujin", "name": "炎の魔法陣", "attribute": "fire", "rarity": 2, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": true, "text": "今いるマスに罠を置く。踏んだ人は移動が止まり、3マス戻る" },
   { "id": "kaen", "name": "火炎", "attribute": "fire", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を4マス戻す" },
   { "id": "bakuen", "name": "爆炎", "attribute": "fire", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分以外の全員を3マス戻す" },
 
-  { "id": "shimo_no_noroi", "name": "霜の呪い", "attribute": "ice", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人の次の出目-2" },
-  { "id": "itetsuku_yuka", "name": "凍てつく床", "attribute": "ice", "rarity": 1, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": false, "text": "今いるマスに罠を置く。踏んだ人はそこで移動が止まる" },
+  { "id": "shimo_no_noroi", "name": "霜の呪い", "attribute": "ice", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人の次の出目-2" },
+  { "id": "itetsuku_yuka", "name": "凍てつく床", "attribute": "ice", "rarity": 2, "timings": ["end"], "usableAtGate": true, "attack": false, "mvp": false, "text": "今いるマスに罠を置く。踏んだ人はそこで移動が止まる" },
   { "id": "hyouketsu", "name": "氷結", "attribute": "ice", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人を1回休みにする" },
   { "id": "fubuki", "name": "吹雪", "attribute": "ice", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分以外の全員の次の移動マス数が半分" },
 
@@ -27,7 +27,7 @@
   { "id": "hansha_no_kagami", "name": "反射の鏡", "attribute": "light", "rarity": 2, "timings": ["counter"], "usableAtGate": true, "attack": false, "mvp": true, "text": "自分への攻撃を、攻撃してきた人にはね返す（罠には使えない）" },
   { "id": "seinaru_kago", "name": "聖なる加護", "attribute": "light", "rarity": 2, "timings": ["start"], "usableAtGate": true, "attack": false, "mvp": false, "text": "次の自分のターンが始まるまで攻撃を受けない" },
 
-  { "id": "boukyaku", "name": "忘却", "attribute": "dark", "rarity": 1, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "相手1人の手札をランダムに1枚捨てさせる" },
+  { "id": "boukyaku", "name": "忘却", "attribute": "dark", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "相手1人の手札をランダムに1枚捨てさせる" },
   { "id": "nusumi_no_kage", "name": "盗みの影", "attribute": "dark", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": true, "text": "相手1人の手札をランダムに1枚奪う" },
   { "id": "yami_no_torihiki", "name": "闇の取引", "attribute": "dark", "rarity": 2, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "自分の手札1枚と、相手1人の手札ランダム1枚を交換する" },
   { "id": "noroi_no_fuin", "name": "呪いの封印", "attribute": "dark", "rarity": 3, "timings": ["start", "end"], "usableAtGate": true, "attack": true, "mvp": false, "text": "相手1人は次の自分のターンが終わるまでカードを使えない" }
