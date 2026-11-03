@@ -3,23 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>魔法のすごろく</title>
+    <title>スペル・ロード ～カードで駆け引き！魔法すごろく～</title>
   </head>
   <body>
     <div id="app">
       <section id="title" class="screen">
-        <h1>🪄 魔法のすごろく</h1>
-        <p class="subtitle">魔法のカードで駆け引きしながら、ゴールを目指そう</p>
-        <label class="field">
-          <span>なまえ</span>
-          <input id="player-name" type="text" maxlength="8" value="あなた" />
-        </label>
-        <div class="field">
-          <span>CPUの人数</span>
-          <div id="cpu-count" class="segmented"></div>
+        <h1>
+          <img class="logo" src="/assets/ui/logo.png" alt="スペル・ロード ～カードで駆け引き！魔法すごろく～" />
+        </h1>
+        <div class="title-panel">
+          <p class="subtitle">魔法のカードで駆け引きしながら、ゴールを目指そう</p>
+          <label class="field">
+            <span>なまえ</span>
+            <input id="player-name" type="text" maxlength="8" value="あなた" />
+          </label>
+          <div class="field">
+            <span>CPUの人数</span>
+            <div id="cpu-count" class="segmented"></div>
+          </div>
+          <button id="start" class="btn primary big">CPUと対戦</button>
+          <p class="note">通信対戦は準備中です</p>
         </div>
-        <button id="start" class="btn primary big">CPUと対戦</button>
-        <p class="note">通信対戦は準備中です</p>
       </section>
 
       <section id="game" class="screen hidden">

@@ -6,6 +6,7 @@ import { buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../core/cards';
 import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate } from '../core/engine';
 import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../core/types';
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
+import { ASSET, img } from './assets';
 import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
@@ -15,6 +16,8 @@ const CPU_NAMES = ['ルル', 'ポポ', 'ミミ'];
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** プレイヤーの顔（キャラクターの画像。無ければ絵文字） */
+const face = (player: number, cls = 'face') => img(ASSET.chara(player), PLAYER_ICONS[player], cls);
 /** 使われたカードを表示しておく時間 */
 const CARD_SHOW_MS = { cpu: 2400, human: 1000 };
 
@@ -31,8 +34,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-function button(label: string, onClick: () => void, cls = ''): HTMLButtonElement {
-  const b = el('button', { class: `btn ${cls}`, text: label });
+function button(label: string | (HTMLElement | string)[], onClick: () => void, cls = ''): HTMLButtonElement {
+  const b = typeof label === 'string' ? el('button', { class: `btn ${cls}`, text: label }) : el('button', { class: `btn ${cls}` }, label);
   b.addEventListener('click', onClick);
   return b;
 }
@@ -156,7 +159,7 @@ export class App implements GameView {
     const box = $('#dice');
     const faces = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
     box.replaceChildren(
-      el('div', { class: 'dice-faces', text: dice.map((d) => faces[d]).join(' ') }),
+      el('div', { class: 'dice-faces' }, dice.map((d) => img(ASSET.dice(d), faces[d], 'dice-face'))),
       el('div', { class: 'dice-value', text: String(value) }),
     );
     box.classList.remove('hidden');
@@ -166,18 +169,17 @@ export class App implements GameView {
 
   /** 使われたカードを大きく見せる。CPUのカードは読めるように長めに出す（タップで閉じられる） */
   private async showCardUse(e: Extract<GameEvent, { type: 'cardPlayed' | 'countered' }>, s: GameState): Promise<void> {
-    const name = (i: number) => `${PLAYER_ICONS[i]} ${s.players[i].name}`;
-    let result = '';
-    if (e.type === 'cardPlayed' && e.target !== undefined) result = `→ ${name(e.target)}に`;
-    if (e.type === 'countered') result = `${s.players[e.attacker].name}の攻撃を${e.reflected ? 'はね返した！' : '防いだ！'}`;
+    let result: (HTMLElement | string)[] = [];
+    if (e.type === 'cardPlayed' && e.target !== undefined) result = ['→ ', face(e.target), `${s.players[e.target].name}に`];
+    if (e.type === 'countered') result = [`${s.players[e.attacker].name}の攻撃を${e.reflected ? 'はね返した！' : '防いだ！'}`];
 
     const box = $('#cast');
     box.replaceChildren(
       el('div', { class: 'cast-body', style: `--pc:${PLAYER_COLORS[e.player]}` }, [
-        el('div', { class: 'cast-who', text: `${name(e.player)}の魔法！` }),
+        el('div', { class: 'cast-who' }, [face(e.player, 'face big'), `${s.players[e.player].name}の魔法！`]),
         this.cardElement({ uid: -1, cardId: e.cardId }, 'large'),
         el('p', { class: 'card-text', text: getCardDef(e.cardId).text }),
-        ...(result ? [el('div', { class: 'cast-result', text: result })] : []),
+        ...(result.length ? [el('div', { class: 'cast-result' }, result)] : []),
         el('div', { class: 'cast-skip', text: 'タップで次へ' }),
       ]),
     );
@@ -196,11 +198,15 @@ export class App implements GameView {
 
   private renderPlayers(s: GameState): void {
     const chips = s.players.map((p) => {
-      const statuses = `${p.statuses.rest ? '💤' : ''}${p.statuses.frost ? '❄️' : ''}`;
       const chip = el('div', { class: `chip ${p.index === s.current ? 'current' : ''}`, style: `--pc:${PLAYER_COLORS[p.index]}` }, [
-        el('span', { class: 'chip-icon', text: PLAYER_ICONS[p.index] }),
+        face(p.index, 'chip-icon'),
         el('span', { class: 'chip-name', text: p.name }),
-        el('span', { class: 'chip-info', text: `🃏${p.hand.length} 残り${distanceToGoal(s, p)}${statuses}` }),
+        el('span', { class: 'chip-info' }, [
+          ...(p.statuses.rest ? [img(ASSET.statusRest, '💤', 'chip-status')] : []),
+          ...(p.statuses.frost ? [img(ASSET.statusFrost, '❄️', 'chip-status')] : []),
+          img(ASSET.cardBack, '🃏', 'chip-card'),
+          `${p.hand.length} 残り${distanceToGoal(s, p)}`,
+        ]),
       ]);
       return chip;
     });
@@ -272,9 +278,10 @@ export class App implements GameView {
     const attr = ATTRIBUTE_STYLE[def.attribute];
     return el('div', { class: `card ${extra}`, style: `--ac:${attr.color}` }, [
       el('div', { class: 'card-head' }, [
-        el('span', { class: 'card-attr', text: attr.name }),
+        img(ASSET.attr(def.attribute), attr.name, 'card-attr'),
         el('span', { class: 'card-rarity', text: '★'.repeat(def.rarity) }),
       ]),
+      img(ASSET.card(c.cardId), '', 'card-art'),
       el('div', { class: 'card-name', text: def.name }),
       el('div', { class: 'card-timing', text: def.timings.map((t) => TIMING_LABEL[t]).join('/') }),
     ]);
@@ -295,10 +302,11 @@ export class App implements GameView {
     const choices = el('div', { class: 'choices' });
     for (const v of variants) {
       let label = '使う';
-      if (v.target !== undefined) label = `${PLAYER_ICONS[v.target]} ${s.players[v.target].name}に使う`;
+      let content: (HTMLElement | string)[] | null = null;
+      if (v.target !== undefined) content = [face(v.target), `${s.players[v.target].name}に使う`];
       if (v.choice !== undefined) label = c.cardId === 'unmei_no_hari' ? `出目を${v.choice > 0 ? '+1' : '-1'}（→ ${Math.max(1, s.turn.value! + v.choice)}）` : `出目を ${v.choice} にする`;
       choices.append(
-        button(label, () => {
+        button(content ?? label, () => {
           this.hideModal();
           this.act(v);
         }, 'primary'),
@@ -404,7 +412,8 @@ export class App implements GameView {
       el('ol', { class: 'ranking' }, order.map((p) =>
         el('li', {}, [
           el('span', { class: 'rank', text: `${r.ranks[p.index]}位` }),
-          `${PLAYER_ICONS[p.index]} ${p.name}`,
+          face(p.index),
+          p.name,
           el('span', { class: 'rest', text: p.index === r.winner ? 'ゴール' : `残り${distanceToGoal(s, p)}マス` }),
         ]),
       )),

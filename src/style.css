@@ -55,9 +55,33 @@ body {
   text-align: center;
 }
 
+#title {
+  background: #cfe8c0 url('/assets/bg/title.png') center / cover no-repeat;
+}
+
 #title h1 {
   margin: 0;
   font-size: 32px;
+}
+
+#title .logo {
+  width: 100%;
+  max-width: 400px;
+  filter: drop-shadow(0 4px 8px #0003);
+}
+
+/* 背景の絵の上でも読めるように、入力欄などを板の上に載せる */
+#title .title-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 320px;
+  padding: 16px;
+  border-radius: 20px;
+  background: #fffaf2e6;
+  box-shadow: 0 4px 16px #0002;
 }
 
 .subtitle,
@@ -274,8 +298,8 @@ body {
 
 .card {
   flex: 0 0 auto;
-  width: 76px;
-  height: 100px;
+  width: 84px;
+  height: 124px;
   border-radius: 10px;
   border: 3px solid var(--ac);
   background: linear-gradient(180deg, #fff 55%, color-mix(in srgb, var(--ac) 18%, #fff));
@@ -497,4 +521,108 @@ body {
   font-size: 11px;
   color: var(--sub);
   margin-top: 8px;
+}
+
+/* ---- 画像素材 ---- */
+
+.pic {
+  display: inline-block;
+  vertical-align: middle;
+  object-fit: contain;
+  user-select: none;
+}
+
+.face {
+  width: 24px;
+  height: 24px;
+}
+
+.face.big {
+  width: 44px;
+  height: 44px;
+}
+
+.chip-icon {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.chip-info .pic,
+.chip-info .pic-fallback {
+  width: 15px;
+  height: 15px;
+  margin-right: 1px;
+}
+
+.btn .face {
+  margin-right: 4px;
+  margin-top: -4px;
+  margin-bottom: -4px;
+}
+
+img.card-attr {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+}
+
+.card-art {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 5px;
+}
+
+.pic-fallback.card-art {
+  display: none;
+}
+
+.card .card-name {
+  margin: 0;
+}
+
+.card.large {
+  width: 180px;
+  height: auto;
+  padding: 6px;
+  gap: 6px;
+}
+
+.card.large img.card-attr {
+  width: 26px;
+  height: 26px;
+}
+
+.card.large .card-head {
+  font-size: 14px;
+}
+
+.card.large .card-timing {
+  font-size: 11px;
+}
+
+.dice-faces {
+  display: flex;
+  gap: 12px;
+}
+
+.dice-face {
+  width: 96px;
+  height: 96px;
+}
+
+.cast-who,
+.cast-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ranking .face {
+  width: 32px;
+  height: 32px;
 }
