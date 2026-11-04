@@ -11,6 +11,7 @@
         <h1>
           <img class="logo" src="/assets/ui/logo.png" alt="スペル・ロード ～カードで駆け引き！魔法すごろく～" />
         </h1>
+        <button id="sound-title" class="sound-toggle" type="button"></button>
         <div class="title-panel">
           <p class="subtitle">魔法のカードで駆け引きしながら、ゴールを目指そう</p>
           <label class="field">
@@ -28,7 +29,9 @@
 
       <section id="game" class="screen hidden">
         <header id="players"></header>
-        <div id="board"></div>
+        <div id="board">
+          <button id="sound-game" class="sound-toggle" type="button"></button>
+        </div>
         <div id="panel">
           <div id="speaker"></div>
           <div id="message"></div>

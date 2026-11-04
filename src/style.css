@@ -743,3 +743,30 @@ img.speaker-img {
   font-weight: normal;
   opacity: 0.9;
 }
+
+/* ---- 音のオン・オフ ---- */
+
+.sound-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: #fffaf2e6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px #0002;
+}
+
+.sound-toggle:not(.on) {
+  opacity: 0.75;
+}
+
+#title {
+  position: relative;
+}

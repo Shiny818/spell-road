@@ -8,6 +8,7 @@ import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../co
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
 import { ASSET, img, imgChain } from './assets';
 import { moodByEvent, moodByRank, type Expression } from './expression';
+import { isSoundOn, onSoundChange, play, setSound, soundForEvent, unlock } from './sound';
 import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
@@ -57,6 +58,7 @@ export class App implements GameView {
   private selection: number[] = [];
 
   init(): void {
+    this.initSound();
     let cpuCount = 3;
     const counts = $('#cpu-count');
     for (const n of [1, 2, 3]) {
@@ -125,7 +127,11 @@ export class App implements GameView {
   // ============================================================
 
   async playEvents(events: GameEvent[], state: GameState): Promise<void> {
+    let prev: GameEvent | undefined;
     for (const e of events) {
+      const sound = soundForEvent(e, prev, HUMAN);
+      if (sound) play(sound);
+      prev = e;
       const text = describeEvent(e, state);
       if (text) this.pushMessage(text);
       if (e.type === 'turnStart') this.speakerMood = null;
@@ -168,6 +174,32 @@ export class App implements GameView {
     this.messages = this.messages.slice(-3);
     const box = $('#message');
     box.replaceChildren(...this.messages.map((m, i) => el('div', { class: i === this.messages.length - 1 ? 'latest' : '', text: m })));
+  }
+
+  /** 音のオン・オフのボタンと、ボタンを押したときの音 */
+  private initSound(): void {
+    const toggles = [$('#sound-title'), $('#sound-game')];
+    const update = (on: boolean) => {
+      for (const t of toggles) {
+        t.textContent = on ? '🔊' : '🔇';
+        t.title = on ? '音をオフにする' : '音をオンにする';
+        t.setAttribute('aria-label', t.title);
+        t.classList.toggle('on', on);
+      }
+    };
+    for (const t of toggles) t.addEventListener('click', () => setSound(!isSoundOn()));
+    onSoundChange(update);
+    update(isSoundOn());
+    // スマホはタップの瞬間にしか音の準備ができないので、タップのたびに準備しておく
+    document.addEventListener('pointerdown', unlock, { capture: true });
+    document.addEventListener(
+      'click',
+      (ev) => {
+        const target = ev.target as HTMLElement;
+        if (target.closest('.btn, .card') && !target.closest('.sound-toggle')) play('click');
+      },
+      { capture: true },
+    );
   }
 
   private async showDice(dice: number[], value: number): Promise<void> {
