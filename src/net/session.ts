@@ -28,6 +28,10 @@ export interface GameSession {
   /** 演出の再生中か */
   readonly busy: boolean;
   act(action: Action): void;
+  /** 待合室で自分の名前を変える（空なら「プレイヤーN」） */
+  rename(name: string): void;
+  /** キャラクターを選ぶ（ほかの人が選んでいたら何もしない） */
+  pickChara(chara: number): void;
   stop(): void;
 }
 

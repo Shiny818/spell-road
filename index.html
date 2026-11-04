@@ -14,13 +14,12 @@
         <button id="sound-title" class="sound-toggle" type="button"></button>
         <div class="title-panel">
           <p class="subtitle">魔法のカードで駆け引きしながら、ゴールを目指そう</p>
-          <label class="field">
-            <span>なまえ</span>
-            <input id="player-name" type="text" maxlength="8" value="あなた" />
-          </label>
-
           <div class="title-section">
             <div class="section-label">ひとりで遊ぶ</div>
+            <label class="field">
+              <span>なまえ</span>
+              <input id="player-name" type="text" maxlength="8" value="あなた" />
+            </label>
             <div class="field">
               <span>マップ</span>
               <div id="board-select" class="segmented board-select"></div>
@@ -60,8 +59,22 @@
             <div class="note">同じWi-Fiにつないだ人に、このコードを伝えてください</div>
           </div>
           <ol id="lobby-seats"></ol>
+          <label id="lobby-name-field" class="field">
+            <span>あなたの名前（ほかの人と同じでもOK）</span>
+            <input id="lobby-name" type="text" maxlength="8" autocomplete="off" />
+          </label>
           <div id="lobby-controls"></div>
           <button id="lobby-leave" class="btn">部屋を出る</button>
+        </div>
+      </section>
+
+      <section id="chara" class="screen hidden">
+        <div class="chara-panel">
+          <h2>キャラクターを選ぶ</h2>
+          <p id="chara-status" class="note"></p>
+          <div id="chara-list"></div>
+          <div id="chara-controls"></div>
+          <button id="chara-leave" class="btn">部屋を出る</button>
         </div>
       </section>
 
@@ -82,6 +95,7 @@
       <div id="net-status" class="hidden"></div>
       <div id="dice" class="hidden"></div>
       <div id="cast" class="hidden"></div>
+      <div id="order" class="hidden"></div>
       <div id="modal" class="hidden"><div id="modal-body"></div></div>
     </div>
     <script type="module" src="/src/main.ts"></script>

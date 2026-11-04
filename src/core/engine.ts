@@ -27,6 +27,8 @@ export class RuleError extends Error {}
 export interface PlayerConfig {
   name: string;
   isCpu: boolean;
+  /** キャラクター（0〜3）。省くとプレイヤーの番号と同じ */
+  chara?: number;
 }
 
 export interface GameConfig {
@@ -35,6 +37,8 @@ export interface GameConfig {
   /** 山札に入れるカードidの一覧 */
   deck: string[];
   seed: number;
+  /** 手番の順番（プレイヤーの番号を早い順に）。省くと番号の順 */
+  order?: number[];
   handLimit?: number;
   initialHand?: number;
   coinsEnabled?: boolean;
@@ -50,6 +54,11 @@ export function createGame(config: GameConfig): GameState {
   if (config.players.length < 2 || config.players.length > 4) {
     throw new Error('プレイヤーは2〜4人です');
   }
+  const n = config.players.length;
+  const order = config.order ?? Array.from({ length: n }, (_, i) => i);
+  if (order.length !== n || new Set(order).size !== n || order.some((i) => !(i >= 0 && i < n))) {
+    throw new Error('手番の順番が正しくありません');
+  }
   const info = boardInfo(config.board);
   // コインはマルチプレイでは使わないので、コインマスは「何もなし」のマスにして見せない
   const board: BoardDef = config.coinsEnabled
@@ -62,13 +71,15 @@ export function createGame(config: GameConfig): GameState {
       index,
       name: p.name,
       isCpu: p.isCpu,
+      chara: p.chara ?? index,
       trail: [info.startId],
       hand: [],
       statuses: { rest: false, frost: false, blizzard: false, sealed: false, protected: false },
       gateCracks: {},
       coins: 0,
     })),
-    current: 0,
+    current: order[0],
+    order: [...order],
     round: 1,
     turnCount: 1,
     phase: 'turnStart',
@@ -93,7 +104,7 @@ export function createGame(config: GameConfig): GameState {
   s.deck = config.deck.map((cardId) => ({ uid: s.nextUid++, cardId }));
   shuffle(s, s.deck);
   for (const p of s.players) draw(s, p, config.initialHand ?? 2);
-  log(s, { type: 'turnStart', player: 0, round: 1 });
+  log(s, { type: 'turnStart', player: order[0], round: 1 });
   return s;
 }
 
@@ -425,7 +436,8 @@ function doPlayCard(s: GameState, player: number, uid: number, target?: number, 
       break;
     default:
       if (ALL_ATTACKS[card.cardId]) {
-        const others = s.players.filter((o) => o.index !== player).map((o) => o.index);
+        // 手番の順に、攻撃した人の次の人から
+        const others = turnOrderFrom(s, player).slice(1);
         startAttack(s, player, others, card.cardId, ALL_ATTACKS[card.cardId], 'card');
       } else {
         startAttack(s, player, [target!], card.cardId, TARGET_ATTACKS[card.cardId], 'card');
@@ -730,6 +742,12 @@ function doDiscard(s: GameState, player: number, uids: number[]): void {
   advanceTurn(s);
 }
 
+/** player から始めて、手番の順に並べたプレイヤーの番号 */
+export function turnOrderFrom(s: GameState, player: number): number[] {
+  const at = s.order.indexOf(player);
+  return [...s.order.slice(at), ...s.order.slice(0, at)];
+}
+
 function advanceTurn(s: GameState): void {
   const n = s.players.length;
   const ended = s.players[s.current];
@@ -742,8 +760,9 @@ function advanceTurn(s: GameState): void {
     s.turnCount++;
   } else {
     for (;;) {
-      s.current = (s.current + 1) % n;
-      if (s.current === 0) s.round++;
+      const at = (s.order.indexOf(s.current) + 1) % n;
+      s.current = s.order[at];
+      if (at === 0) s.round++;
       s.turnCount++;
       const p = s.players[s.current];
       if (!p.statuses.rest) break;

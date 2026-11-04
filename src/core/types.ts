@@ -69,6 +69,8 @@ export interface PlayerState {
   index: number;
   name: string;
   isCpu: boolean;
+  /** 選んだキャラクター（0〜3）。コマ・顔の絵とプレイヤーの色はこれで決まる */
+  chara: number;
   /** 通ってきたマスの履歴。最後が現在地。戻る効果はこれをさかのぼる */
   trail: string[];
   hand: CardInstance[];
@@ -172,6 +174,8 @@ export interface GameState {
   board: BoardDef;
   players: PlayerState[];
   current: number;
+  /** 手番の順番（プレイヤーの番号を、手番の早い順に並べたもの） */
+  order: number[];
   round: number;
   turnCount: number;
   phase: Phase;

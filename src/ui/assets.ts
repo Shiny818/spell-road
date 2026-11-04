@@ -6,9 +6,10 @@ import type { Attribute, SquareType } from '../core/types';
 const BASE = `${import.meta.env.BASE_URL}assets/`;
 
 export const ASSET = {
-  chara: (player: number) => `${BASE}chara/p${player + 1}.png`,
+  /** キャラクター（0〜3）の全身の絵 */
+  chara: (chara: number) => `${BASE}chara/p${chara + 1}.png`,
   /** バストアップ。表情があれば p1_brave.png、ふつうの顔は p1.png */
-  bust: (player: number, expr: string) => `${BASE}chara/bust/p${player + 1}${expr === 'normal' ? '' : `_${expr}`}.png`,
+  bust: (chara: number, expr: string) => `${BASE}chara/bust/p${chara + 1}${expr === 'normal' ? '' : `_${expr}`}.png`,
   square: (type: SquareType) => `${BASE}square/${type}.png`,
   squareBase: `${BASE}square/base.png`,
   /** ボード専用のマスの土台（無ければ square/base.png の切り株を使う） */

@@ -5,7 +5,7 @@ import type { GameState } from '../core/types';
 import { PROTOCOL_VERSION } from './protocol';
 
 /** 保存の形の版。保存する中身を変えたら上げる（古い保存は再開できないものとして捨てる） */
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 /** これより古い保存は再開しない */
 export const SAVE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const STORAGE_KEY = 'spell-road.save';

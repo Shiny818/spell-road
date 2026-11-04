@@ -9,7 +9,7 @@ import { NetError, withHeartbeat, type ClientSide, type ConnectToHost } from './
 
 export interface ClientCallbacks {
   /** 待合室の顔ぶれが変わった */
-  onLobby?(seats: SeatInfo[], you: number): void;
+  onLobby?(seats: SeatInfo[], you: number, choosing: boolean): void;
   /** ゲームが始まった（もう一度、再接続で途中から、も含む）。画面の準備ができるまで待つ */
   onGameStart?(state: GameState): void | Promise<void>;
   /** 通信の状態（つなぎ直し中など）。null で消す */
@@ -40,6 +40,8 @@ export class ClientSession implements GameSession {
   clock: LocalClock | null = null;
   busy = false;
 
+  /** ゲームの前の、キャラクターを選んでいるところか */
+  private choosing = false;
   private conn: ClientSide | null = null;
   private seq = -1;
   private game = 0;
@@ -72,6 +74,14 @@ export class ClientSession implements GameSession {
     // ホストから次の状態が届くまで、続けて操作できないようにする
     this.legal = [];
     if (this.state) this.view.render(this.state);
+  }
+
+  rename(name: string): void {
+    this.conn?.send({ t: 'rename', name });
+  }
+
+  pickChara(chara: number): void {
+    this.conn?.send({ t: 'pick', chara });
   }
 
   stop(): void {
@@ -128,14 +138,15 @@ export class ClientSession implements GameSession {
       case 'lobby':
         this.me = msg.you;
         this.seats = msg.seats;
-        this.callbacks.onLobby?.(msg.seats, msg.you);
+        this.choosing = !!msg.choosing;
+        this.callbacks.onLobby?.(msg.seats, msg.you, this.choosing);
         // ゲームの途中でこれが届くのは、ホストが保存から部屋を開き直して、みんなを待っているとき
         if (this.state) this.callbacks.onStatus?.('ホストが再開の準備をしています。みんながそろうと続きが始まります…');
         break;
       case 'seats':
         this.seats = msg.seats;
         if (this.state) this.view.render(this.state);
-        else this.callbacks.onLobby?.(msg.seats, this.me);
+        else this.callbacks.onLobby?.(msg.seats, this.me, this.choosing);
         break;
       case 'update':
         this.enqueue(async () => {

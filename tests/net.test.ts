@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { HIDDEN_CARD } from '../src/core/view';
 import type { GameState } from '../src/core/types';
 import { ClientSession } from '../src/net/ClientSession';
-import { HostSession, type HostTiming } from '../src/net/HostSession';
+import { HostSession, turnOrderFor, type HostTiming } from '../src/net/HostSession';
 import { normalizeRoomCode, makeRoomCode, type SeatInfo } from '../src/net/protocol';
 import type { GameSession, GameView } from '../src/net/session';
 import { createMemoryNetwork, type HostSide } from '../src/net/transport';
@@ -165,7 +165,10 @@ describe('通信対戦', () => {
     const a = await room.join('アン', 2);
     a.view.auto = false;
     await until(() => room.host.seats.length === 2);
-    room.host.startGame(0);
+    // ホストが先手になるシードで始める
+    let seed = 1;
+    while (turnOrderFor(2, seed)[0] !== 0) seed++;
+    room.host.startGame(0, seed);
     await until(() => room.host.legal.length > 0);
     // ホスト（席0）の番に、アンが勝手にダイスを振ろうとしても無視される
     const conn = (a.client as unknown as { conn: HostSide }).conn;

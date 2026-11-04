@@ -4,6 +4,8 @@ import type { Attribute, SquareType } from '../core/types';
 
 export const PLAYER_COLORS = ['#e8577a', '#4a90e2', '#f2b632', '#5cb85c'];
 export const PLAYER_ICONS = ['🧙‍♀️', '🧙', '🧝', '🧚'];
+/** キャラクター選びで出す、キャラクターの説明。並びは PLAYER_COLORS・絵（chara/p1.png〜）と同じ */
+export const CHARA_LABELS = ['見習い魔女', '見習い魔法使い', '魔法剣士', 'エルフの魔法使い'];
 
 export const SQUARE_STYLE: Record<SquareType, { color: string; icon: string; label: string }> = {
   start: { color: '#ffffff', icon: '⭐', label: 'スタート' },

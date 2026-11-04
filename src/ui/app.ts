@@ -17,7 +17,7 @@ import { ASSET, img, imgChain } from './assets';
 import { moodByEvent, moodByRank, type Expression } from './expression';
 import { isSoundOn, onSoundChange, play, playBgm, setSound, soundForEvent, unlock } from './sound';
 import { describeEvent } from './text';
-import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
+import { ATTRIBUTE_STYLE, CHARA_LABELS, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
 
 /** この端末（ブラウザのタブ）の目印。つなぎ直したときに同じ席に戻るために使う */
 function clientId(): string {
@@ -50,8 +50,13 @@ function loadBoardId(): string {
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** プレイヤーの顔（キャラクターの画像。無ければ絵文字） */
-const face = (player: number, cls = 'face') => img(ASSET.chara(player), PLAYER_ICONS[player], cls);
+/** キャラクター（0〜3）の顔（キャラクターの画像。無ければ絵文字） */
+const face = (chara: number, cls = 'face') => img(ASSET.chara(chara), PLAYER_ICONS[chara], cls);
+/** プレイヤーの顔。絵と色は、そのプレイヤーが選んだキャラクターで決まる */
+const playerFace = (s: GameState, player: number, cls = 'face') => face(s.players[player].chara, cls);
+const playerColor = (s: GameState, player: number) => PLAYER_COLORS[s.players[player].chara];
+/** 手番の順番の発表を出しておく時間（タップで閉じられる） */
+const ORDER_SHOW_MS = 4000;
 /** 使われたカードを表示しておく時間 */
 const CARD_SHOW_MS = { cpu: 2400, human: 1000 };
 /** サイコロが転がっている時間 */
@@ -111,11 +116,10 @@ export class App implements GameView {
     this.segmented($('#cpu-count'), [1, 2, 3], cpuCount, (n) => (cpuCount = n));
     this.boardChoices($('#board-select'));
     const name = () => $<HTMLInputElement>('#player-name').value.trim() || 'あなた';
-    // 通信対戦では、名前が「あなた」のままだと他の人の画面で紛らわしいので、ホストが「プレイヤー2」などの名前をつける
-    const onlineName = () => (name() === 'あなた' ? '' : name());
-    $('#start').addEventListener('click', () => void this.startSolo(name(), cpuCount));
-    $('#create-room').addEventListener('click', () => void this.createRoom(onlineName()));
-    $('#join-room').addEventListener('click', () => void this.joinRoom(onlineName()));
+    // 通信対戦の名前は、最初は席の順の「プレイヤー1〜4」。待合室で自由に変えられる
+    $('#start').addEventListener('click', () => this.startSolo(name(), cpuCount));
+    $('#create-room').addEventListener('click', () => void this.createRoom(''));
+    $('#join-room').addEventListener('click', () => void this.joinRoom(''));
     const codeInput = $<HTMLInputElement>('#room-code');
     try {
       codeInput.value = sessionStorage.getItem(LAST_ROOM_KEY) ?? '';
@@ -123,9 +127,15 @@ export class App implements GameView {
       // 保存できない環境では何もしない
     }
     codeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') void this.joinRoom(onlineName());
+      if (e.key === 'Enter') void this.joinRoom('');
     });
     $('#lobby-leave').addEventListener('click', () => this.leave());
+    $('#chara-leave').addEventListener('click', () => this.leave());
+    const lobbyName = $<HTMLInputElement>('#lobby-name');
+    lobbyName.addEventListener('change', () => this.session?.rename(lobbyName.value));
+    lobbyName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') lobbyName.blur();
+    });
     $('#resume-room').addEventListener('click', () => void this.resumeRoom());
     this.refreshResume();
     // 画面が裏に回ると画面を消さない設定は自動で解除されるので、戻ってきたらかけ直す
@@ -184,11 +194,14 @@ export class App implements GameView {
   // 1人プレイ・部屋を作る・部屋に入る
   // ============================================================
 
-  private async startSolo(name: string, cpuCount: number): Promise<void> {
-    await this.showGameScreen();
-    const host = new HostSession(name, this, null, { onGameStart: (s) => this.onGameStart(s) });
+  /** 1人プレイ。キャラクターを選ぶと始まる */
+  private startSolo(name: string, cpuCount: number): void {
+    const host = new HostSession(name, this, null, {
+      onLobby: (seats, choosing) => this.onLobby(seats, 0, choosing),
+      onGameStart: (s) => this.onGameStart(s),
+    });
     this.session = host;
-    await host.startGame(cpuCount, undefined, this.boardId);
+    host.chooseCharacters(cpuCount, this.boardId);
   }
 
   private async createRoom(name: string): Promise<void> {
@@ -199,7 +212,7 @@ export class App implements GameView {
         name,
         this,
         transport,
-        { onLobby: (seats) => this.renderLobby(seats, 0), onGameStart: (s) => this.onGameStart(s) },
+        { onLobby: (seats, choosing) => this.onLobby(seats, 0, choosing), onGameStart: (s) => this.onGameStart(s) },
         {},
         this.store,
       );
@@ -236,7 +249,7 @@ export class App implements GameView {
         save,
         this,
         transport,
-        { onLobby: (seats) => this.renderLobby(seats, 0), onGameStart: (s) => this.onGameStart(s) },
+        { onLobby: (seats, choosing) => this.onLobby(seats, 0, choosing), onGameStart: (s) => this.onGameStart(s) },
         {},
         this.store,
       );
@@ -263,7 +276,7 @@ export class App implements GameView {
     }
     this.setTitleBusy('つないでいます…');
     const client = new ClientSession(connectToRoom, code, name, clientId(), this, {
-      onLobby: (seats, you) => this.renderLobby(seats, you),
+      onLobby: (seats, you, choosing) => this.onLobby(seats, you, choosing),
       onGameStart: (s) => this.onGameStart(s),
       onStatus: (text) => this.setNetStatus(text),
       onEnd: (text) => this.leave(text),
@@ -292,8 +305,54 @@ export class App implements GameView {
     msg.classList.toggle('error', !!error);
   }
 
-  private showScreen(id: 'title' | 'lobby' | 'game'): void {
-    for (const s of ['title', 'lobby', 'game']) $(`#${s}`).classList.toggle('hidden', s !== id);
+  private showScreen(id: 'title' | 'lobby' | 'chara' | 'game'): void {
+    for (const s of ['title', 'lobby', 'chara', 'game']) $(`#${s}`).classList.toggle('hidden', s !== id);
+  }
+
+  /** 待合室・キャラクター選びの顔ぶれが変わった */
+  private onLobby(seats: SeatInfo[], you: number, choosing: boolean): void {
+    if (!this.session || this.session.state) return;
+    if (choosing) this.renderChoose(seats, you);
+    else {
+      if (!$('#chara').classList.contains('hidden')) this.showScreen('lobby');
+      this.renderLobby(seats, you);
+    }
+  }
+
+  /** キャラクター選び（早い者勝ち）。全員が選ぶとゲームが始まる */
+  private renderChoose(seats: SeatInfo[], you: number): void {
+    this.showScreen('chara');
+    const session = this.session!;
+    const host = session instanceof HostSession ? session : null;
+    const solo = host !== null && host.code === null;
+    const mine = seats[you]?.chara ?? null;
+    $('#chara-list').replaceChildren(
+      ...CHARA_LABELS.map((label, c) => {
+        const owner = seats.findIndex((s) => s.chara === c);
+        const taken = owner !== -1 && owner !== you;
+        const card = el('button', { class: `btn chara-card ${owner === you ? 'selected' : ''} ${taken ? 'taken' : ''}`, style: `--pc:${PLAYER_COLORS[c]}` }, [
+          face(c, 'chara-pic'),
+          el('span', { class: 'chara-label', text: label }),
+          el('span', { class: 'chara-owner', text: owner === -1 ? '' : owner === you ? 'あなた' : `${seats[owner].name}が選んだ` }),
+        ]);
+        card.disabled = taken;
+        card.addEventListener('click', () => session.pickChara(c));
+        return card;
+      }),
+    );
+    const humans = seats.filter((s) => s.kind === 'human');
+    const picked = humans.filter((s) => s.chara !== null).length;
+    $('#chara-status').textContent = solo
+      ? '使うキャラクターを選んでください'
+      : mine === null
+        ? '使うキャラクターを選んでください（早い者勝ち）'
+        : `ほかの人が選ぶのを待っています（${picked}/${humans.length}人が選びました）`;
+    const controls: HTMLElement[] = [];
+    if (host && !solo && mine !== null && picked < humans.length) {
+      controls.push(button('まだの人はおまかせで始める', () => host.startWithoutWaiting()));
+    }
+    $('#chara-controls').replaceChildren(...controls);
+    $('#chara-leave').textContent = solo ? 'タイトルへ戻る' : host ? '部屋を閉じる' : '部屋を出る';
   }
 
   private showLobby(code: string): void {
@@ -304,10 +363,13 @@ export class App implements GameView {
   /** 待合室の顔ぶれ。ホストならCPUの人数を選んで始められる */
   private renderLobby(seats: SeatInfo[], you: number): void {
     if (!this.session || this.session.state) return;
+    // 自分の名前の欄（打っている途中は書き換えない）
+    const nameInput = $<HTMLInputElement>('#lobby-name');
+    if (document.activeElement !== nameInput) nameInput.value = seats[you]?.name ?? '';
     $('#lobby-seats').replaceChildren(
       ...seats.map((s, i) =>
-        el('li', { style: `--pc:${PLAYER_COLORS[i]}` }, [
-          face(i),
+        el('li', { style: `--pc:${s.chara === null ? 'var(--line)' : PLAYER_COLORS[s.chara]}` }, [
+          s.chara === null ? el('span', { class: 'face seat-num', text: String(i + 1) }) : face(s.chara),
           el('span', { class: 'lobby-name', text: s.name }),
           el('span', {
             class: 'lobby-tag',
@@ -321,6 +383,8 @@ export class App implements GameView {
     const host = this.session instanceof HostSession ? this.session : null;
     const controls = $('#lobby-controls');
     // 保存から開き直した部屋で、参加者が戻るのを待っている
+    // 保存から再開するときは、名前は前のゲームのまま
+    $('#lobby-name-field').classList.toggle('hidden', !!host?.paused);
     if (host?.paused) {
       $('#lobby-leave').textContent = '再開をやめて閉じる';
       controls.replaceChildren(
@@ -356,7 +420,7 @@ export class App implements GameView {
       button(
         'ゲーム開始',
         () => {
-          void this.showGameScreen().then(() => host.startGame(Number(controls.dataset.cpu), undefined, this.boardId));
+          host.chooseCharacters(Number(controls.dataset.cpu), this.boardId);
         },
         'primary big',
       ),
@@ -370,6 +434,42 @@ export class App implements GameView {
     this.messages = [];
     this.pushMessage(`${state.players[state.current].name}のターン`);
     this.hideModal();
+    // 始まったばかりなら、手番の順番を発表する（途中からの再開・つなぎ直しでは出さない）
+    const fresh = state.turnCount === 1 && state.phase === 'turnStart' && state.turn.value === null && !state.turn.cardUsed && !state.pending;
+    if (fresh) await this.announceOrder(state);
+  }
+
+  /** 手番の順番を、キャラクターを早い順に左から並べて見せる */
+  private async announceOrder(s: GameState): Promise<void> {
+    const box = $('#order');
+    box.replaceChildren(
+      el('div', { class: 'order-body' }, [
+        el('h2', { text: '手番の順番' }),
+        el(
+          'div',
+          { class: 'order-row' },
+          s.order.map((p, i) =>
+            el('div', { class: `order-item ${p === this.me ? 'me' : ''}`, style: `--pc:${playerColor(s, p)}` }, [
+              el('div', { class: 'order-num', text: `${i + 1}番` }),
+              playerFace(s, p, 'order-pic'),
+              el('div', { class: 'order-name', text: s.players[p].name }),
+            ]),
+          ),
+        ),
+        el('div', { class: 'cast-skip', text: 'タップで始める' }),
+      ]),
+    );
+    box.classList.remove('hidden');
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        box.removeEventListener('click', done);
+        resolve();
+      };
+      const timer = setTimeout(done, ORDER_SHOW_MS);
+      box.addEventListener('click', done);
+    });
+    box.classList.add('hidden');
   }
 
   /** 部屋を出てタイトルに戻る。text があれば知らせる */
@@ -379,6 +479,7 @@ export class App implements GameView {
     this.releaseAwake();
     this.setNetStatus(null);
     this.hideModal();
+    $('#order').classList.add('hidden');
     delete $('#lobby-controls').dataset.cpu;
     this.refreshResume();
     this.showScreen('title');
@@ -599,14 +700,14 @@ export class App implements GameView {
   /** 使われたカードを大きく見せる。CPUのカードは読めるように長めに出す（タップで閉じられる） */
   private async showCardUse(e: Extract<GameEvent, { type: 'cardPlayed' | 'countered' }>, s: GameState): Promise<void> {
     let result: (HTMLElement | string)[] = [];
-    if (e.type === 'cardPlayed' && e.target !== undefined) result = ['→ ', face(e.target), `${s.players[e.target].name}に`];
+    if (e.type === 'cardPlayed' && e.target !== undefined) result = ['→ ', playerFace(s, e.target), `${s.players[e.target].name}に`];
     if (e.type === 'cardPlayed' && ALL_ATTACKS[e.cardId]) result = ['→ 自分以外の全員に'];
     if (e.type === 'countered') result = [`${s.players[e.attacker].name}の攻撃を${e.reflected ? 'はね返した！' : '防いだ！'}`];
 
     const box = $('#cast');
     box.replaceChildren(
-      el('div', { class: 'cast-body', style: `--pc:${PLAYER_COLORS[e.player]}` }, [
-        el('div', { class: 'cast-who' }, [face(e.player, 'face big'), `${s.players[e.player].name}の魔法！`]),
+      el('div', { class: 'cast-body', style: `--pc:${playerColor(s, e.player)}` }, [
+        el('div', { class: 'cast-who' }, [playerFace(s, e.player, 'face big'), `${s.players[e.player].name}の魔法！`]),
         this.cardElement({ uid: -1, cardId: e.cardId }, 'large'),
         el('p', { class: 'card-text', text: getCardDef(e.cardId).text }),
         ...(result.length ? [el('div', { class: 'cast-result' }, result)] : []),
@@ -628,10 +729,11 @@ export class App implements GameView {
 
   private renderPlayers(s: GameState): void {
     const seats = this.session?.seats ?? [];
-    const chips = s.players.map((p) => {
+    // 手番の順に並べる
+    const chips = s.order.map((i) => s.players[i]).map((p) => {
       const away = seats[p.index]?.kind === 'human' && !seats[p.index].connected;
-      const chip = el('div', { class: `chip ${p.index === s.current ? 'current' : ''} ${away ? 'away' : ''}`, style: `--pc:${PLAYER_COLORS[p.index]}` }, [
-        face(p.index, 'chip-icon'),
+      const chip = el('div', { class: `chip ${p.index === s.current ? 'current' : ''} ${away ? 'away' : ''}`, style: `--pc:${PLAYER_COLORS[p.chara]}` }, [
+        face(p.chara, 'chip-icon'),
         el('span', { class: 'chip-name', text: p.name }),
         ...(away ? [el('span', { class: 'chip-away', text: '切断中' })] : []),
         el('span', { class: 'chip-info' }, [
@@ -662,15 +764,16 @@ export class App implements GameView {
     box.dataset.key = key;
     box.dataset.player = String(player);
     box.dataset.expr = expr;
-    box.style.setProperty('--pc', PLAYER_COLORS[player]);
+    const chara = s.players[player].chara;
+    box.style.setProperty('--pc', PLAYER_COLORS[chara]);
     // 表情の絵 → ふつうの顔のバストアップ → 全身の絵を切り抜いたもの → 絵文字、の順に試す
     const pic = imgChain(
       [
-        ...(expr === 'normal' ? [] : [{ src: ASSET.bust(player, expr), cls: 'speaker-img' }]),
-        { src: ASSET.bust(player, 'normal'), cls: 'speaker-img' },
-        { src: ASSET.chara(player), cls: 'speaker-img crop' },
+        ...(expr === 'normal' ? [] : [{ src: ASSET.bust(chara, expr), cls: 'speaker-img' }]),
+        { src: ASSET.bust(chara, 'normal'), cls: 'speaker-img' },
+        { src: ASSET.chara(chara), cls: 'speaker-img crop' },
       ],
-      PLAYER_ICONS[player],
+      PLAYER_ICONS[chara],
       'speaker-img',
     );
     box.replaceChildren(el('div', { class: 'speaker-pic' }, [pic]), el('div', { class: 'speaker-name', text: s.players[player].name }));
@@ -800,7 +903,7 @@ export class App implements GameView {
         // 相手を選ぶときの手がかりに、ゴールまでの残りマス数と手札の枚数を見せる
         const t = s.players[v.target];
         content = [
-          face(v.target),
+          playerFace(s, v.target),
           el('span', { class: 'target-label' }, [
             el('span', { text: `${t.name}に使う` }),
             el('span', { class: 'target-info', text: `ゴールまで${distanceToGoal(s, t)}マス・手札${t.hand.length}枚` }),
@@ -933,7 +1036,7 @@ export class App implements GameView {
       el('ol', { class: 'ranking' }, order.map((p) =>
         el('li', {}, [
           el('span', { class: 'rank', text: `${r.ranks[p.index]}位` }),
-          face(p.index),
+          face(p.chara),
           p.name,
           el('span', { class: 'rest', text: p.index === r.winner ? 'ゴール' : `残り${distanceToGoal(s, p)}マス` }),
         ]),

@@ -946,6 +946,169 @@ img.speaker-img {
   width: 100%;
 }
 
+/* まだキャラクターを選んでいない席は、席の番号を出す */
+.seat-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--line);
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+#lobby-name-field {
+  width: 100%;
+}
+
+/* ---- キャラクター選び ---- */
+
+#chara {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #cfe8c0 url('/assets/bg/title.png') center / cover no-repeat;
+}
+
+.chara-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+  padding: 18px 16px;
+  border-radius: 20px;
+  background: #fffaf2f0;
+  box-shadow: 0 4px 16px #0002;
+  text-align: center;
+}
+
+.chara-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+#chara-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.btn.chara-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 6px;
+  border: 3px solid var(--line);
+  border-bottom: 8px solid var(--pc);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.btn.chara-card.selected {
+  border-color: var(--pc);
+  box-shadow: 0 0 0 3px var(--glow);
+}
+
+.btn.chara-card.taken {
+  opacity: 0.45;
+}
+
+.chara-pic {
+  width: 96px;
+  height: 96px;
+}
+
+.chara-label {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.chara-owner {
+  min-height: 1.3em;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+#chara-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* ---- 手番の順番の発表 ---- */
+
+#order {
+  position: absolute;
+  inset: 0;
+  background: #0006;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 45;
+  animation: pop 0.2s ease-out;
+}
+
+.order-body {
+  width: min(380px, 92%);
+  background: var(--panel);
+  border-radius: 20px;
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.order-body h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+}
+
+.order-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.order-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border-radius: 12px;
+  border-bottom: 6px solid var(--pc);
+  background: #fff;
+}
+
+.order-item.me {
+  box-shadow: 0 0 0 3px var(--glow);
+}
+
+.order-num {
+  font-size: 15px;
+  font-weight: bold;
+  color: var(--pc);
+}
+
+.order-pic {
+  width: 64px;
+  height: 64px;
+}
+
+.order-name {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: bold;
+  overflow-wrap: anywhere;
+}
+
 /* ---- 通信対戦: 切断中・制限時間・通信の状態 ---- */
 
 .chip.away {

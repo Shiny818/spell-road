@@ -4,7 +4,7 @@
 import type { Action, GameEvent, GameState } from '../core/types';
 
 /** 通信の版。メッセージの形を変えたら上げる（古い画面がつながってきたら断る） */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const MAX_PLAYERS = 4;
 
@@ -17,6 +17,8 @@ export interface SeatInfo {
   connected: boolean;
   /** ホストの席か */
   host: boolean;
+  /** 選んだキャラクター（0〜3）。まだ選んでいなければ null */
+  chara: number | null;
 }
 
 /** 制限時間（ホストが数える。端末ごとの時計のずれが関係ないよう、残り時間で送る） */
@@ -30,6 +32,10 @@ export interface Clock {
 export type ClientMessage =
   | { t: 'hello'; v: number; clientId: string; name: string }
   | { t: 'action'; seq: number; action: Action }
+  /** 待合室で名前を変える */
+  | { t: 'rename'; name: string }
+  /** キャラクターを選ぶ（早い者勝ち） */
+  | { t: 'pick'; chara: number }
   /** 演出を見終わった（ホストは全員が見終わってから次へ進める） */
   | { t: 'watched'; seq: number }
   | { t: 'leave' }
@@ -37,8 +43,8 @@ export type ClientMessage =
 
 /** ホスト → 参加者 */
 export type HostMessage =
-  /** 待合室（ゲーム前） */
-  | { t: 'lobby'; you: number; seats: SeatInfo[] }
+  /** 待合室（ゲーム前）。choosing ならキャラクターを選んでいるところ */
+  | { t: 'lobby'; you: number; seats: SeatInfo[]; choosing?: boolean }
   /**
    * ゲームの状態と、新しく起きたできごと。seq はホストが状態を変えるたびに1増え、
    * game は「もう一度」で新しいゲームになると1増える

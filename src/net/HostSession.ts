@@ -6,6 +6,7 @@ import { chooseCpuAction } from '../ai/cpu';
 import { DEFAULT_BOARD_ID, getBoard } from '../data/boards';
 import { ALL_CARD_IDS, buildSharedDeck } from '../core/cards';
 import { actionKey, applyAction, createGame, expectedActor, getLegalActions } from '../core/engine';
+import { nextRandom } from '../core/rng';
 import { redactFor } from '../core/view';
 import type { Action, BoardDef, GameState } from '../core/types';
 import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type Clock, type HostMessage, type SeatInfo } from './protocol';
@@ -14,6 +15,32 @@ import { toLocalClock, type GameSession, type GameView, type LocalClock } from '
 import { withHeartbeat, type HostSide, type HostTransport } from './transport';
 
 export const CPU_NAMES = ['ルル', 'ポポ', 'ミミ'];
+/** キャラクターの数 */
+export const CHARA_COUNT = 4;
+
+/** 名前をつけていない人の名前（席の順に、プレイヤー1、プレイヤー2…） */
+export const defaultName = (seat: number) => `プレイヤー${seat + 1}`;
+
+/** シードから作った乱数で並べ替える（同じシードなら同じ並び） */
+function shuffled<T>(items: T[], seed: number): T[] {
+  const a = [...items];
+  let state = seed >>> 0;
+  for (let i = a.length - 1; i > 0; i--) {
+    const [r, next] = nextRandom(state);
+    state = next;
+    const j = Math.floor(r * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** シードから決まる手番の順番（席の番号を早い順に） */
+export function turnOrderFor(count: number, seed: number): number[] {
+  return shuffled(
+    Array.from({ length: count }, (_, i) => i),
+    seed ^ 0x0de4,
+  );
+}
 
 export interface HostTiming {
   /** CPUが操作するまでの間 */
@@ -40,6 +67,10 @@ interface Seat {
   name: string;
   kind: 'human' | 'cpu';
   host: boolean;
+  /** 自分で名前をつけたか（つけていなければ、席の順の「プレイヤーN」） */
+  custom: boolean;
+  /** 選んだキャラクター。まだなら null */
+  chara: number | null;
   clientId: string | null;
   conn: HostSide | null;
   /** 最後に見終わった update の番号 */
@@ -49,8 +80,8 @@ interface Seat {
 }
 
 export interface HostCallbacks {
-  /** 待合室の顔ぶれが変わった */
-  onLobby?(seats: SeatInfo[]): void;
+  /** 待合室の顔ぶれが変わった。choosing ならキャラクターを選んでいるところ */
+  onLobby?(seats: SeatInfo[], choosing: boolean): void;
   /** ゲームが始まった（もう一度、も含む）。画面の準備ができるまで待つ */
   onGameStart?(state: GameState): void | Promise<void>;
 }
@@ -78,6 +109,8 @@ export class HostSession implements GameSession {
   private waiting = false;
   /** この部屋が保存を書いた（閉じるときに消してよい） */
   private ownsSave = false;
+  /** キャラクターを選んでいるところ（全員が選ぶとゲームが始まる） */
+  private choice: { cpuCount: number; boardId: string } | null = null;
 
   constructor(
     hostName: string,
@@ -89,7 +122,8 @@ export class HostSession implements GameSession {
     private readonly store: SaveStore | null = null,
   ) {
     this.timing = { ...DEFAULT_TIMING, ...timing };
-    this.seatList = [this.newSeat(hostName || 'プレイヤー1', 'human', null, true)];
+    this.seatList = [this.newSeat(hostName || defaultName(0), 'human', null, true)];
+    this.seatList[0].custom = !!hostName;
     transport?.onConnection((conn) => this.accept(conn));
   }
 
@@ -107,7 +141,11 @@ export class HostSession implements GameSession {
     store: SaveStore | null = null,
   ): HostSession {
     const host = new HostSession(save.seats[0].name, view, transport, callbacks, timing, store);
-    host.seatList = save.seats.map((s) => host.newSeat(s.name, s.kind, s.clientId, s.host));
+    host.seatList = save.seats.map((s, i) => {
+      const seat = host.newSeat(s.name, s.kind, s.clientId, s.host);
+      seat.chara = save.state.players[i].chara;
+      return seat;
+    });
     host.full = save.state;
     host.gameNo = save.gameNo;
     // 古い画面からの操作を受け付けないよう、番号を進めておく
@@ -126,6 +164,11 @@ export class HostSession implements GameSession {
   /** 保存から開き直して、参加者が戻るのを待っているか */
   get paused(): boolean {
     return this.waiting;
+  }
+
+  /** キャラクターを選んでいるところか */
+  get choosing(): boolean {
+    return this.choice !== null;
   }
 
   /** まだ戻っていない参加者の席（ホスト・CPUは含まない） */
@@ -148,6 +191,7 @@ export class HostSession implements GameSession {
       kind: s.kind,
       host: s.host,
       connected: s.host || s.kind === 'cpu' || s.conn !== null,
+      chara: s.chara,
     }));
   }
 
@@ -162,11 +206,65 @@ export class HostSession implements GameSession {
   }
 
   /**
+   * キャラクター選びを始める。人の席の全員が選ぶと、ゲームが始まる（早い者勝ち）。
+   * 足りない席はCPUで埋め、CPUは残りのキャラクターになる
+   */
+  chooseCharacters(cpuCount: number, boardId = this.full?.board.id ?? DEFAULT_BOARD_ID): void {
+    if (this.full || this.stopped) return;
+    this.choice = { cpuCount, boardId };
+    for (const s of this.seatList) s.chara = null;
+    this.seatsChanged();
+  }
+
+  /** 自分（ホスト）のキャラクターを選ぶ */
+  pickChara(chara: number): void {
+    this.pick(this.seatList[this.me], chara);
+  }
+
+  /** まだ選んでいない人がいても始める（選んでいない人は、残りのキャラクターになる） */
+  startWithoutWaiting(): void {
+    if (this.choice) this.beginChosen();
+  }
+
+  /** 自分（ホスト）の名前を変える。待合室・キャラクター選びの間だけ */
+  rename(name: string): void {
+    this.renameSeat(this.seatList[this.me], name);
+  }
+
+  private pick(seat: Seat, chara: number): void {
+    if (!this.choice || !Number.isInteger(chara) || chara < 0 || chara >= CHARA_COUNT) return;
+    if (this.seatList.some((s) => s !== seat && s.chara === chara)) return;
+    seat.chara = chara;
+    this.seatsChanged();
+    this.startIfAllPicked();
+  }
+
+  private startIfAllPicked(): void {
+    if (this.choice && this.seatList.every((s) => s.kind !== 'human' || s.chara !== null)) this.beginChosen();
+  }
+
+  private beginChosen(): void {
+    const { cpuCount, boardId } = this.choice!;
+    this.choice = null;
+    void this.startGame(cpuCount, undefined, boardId);
+  }
+
+  private renameSeat(seat: Seat, name: string): void {
+    if (this.full) return;
+    const trimmed = name.trim().slice(0, 8);
+    seat.custom = trimmed !== '';
+    seat.name = trimmed || defaultName(this.seatList.indexOf(seat));
+    this.seatsChanged();
+  }
+
+  /**
    * ゲームを始める。足りない席はCPUで埋める（もう一度遊ぶときも、これを呼ぶ）。
+   * キャラクターを選んでいない席（CPUなど）は残りのキャラクターになり、手番の順番はくじで決める。
    * boardId を省くと、前のゲームと同じボード
    */
   async startGame(cpuCount: number, seed = Math.floor(Math.random() * 2 ** 31), boardId = this.full?.board.id ?? DEFAULT_BOARD_ID): Promise<void> {
     this.clearTimers();
+    this.choice = null;
     // 前のゲームのCPUの席は作り直す。人の席はそのまま（切断中の人も席は残す）
     this.seatList = this.seatList.filter((s) => s.kind === 'human');
     const total = Math.min(MAX_PLAYERS, Math.max(2, this.seatList.length + cpuCount));
@@ -174,12 +272,22 @@ export class HostSession implements GameSession {
     const cpuNames = CPU_NAMES.filter((n) => !used.has(n)).concat(CPU_NAMES);
     for (let i = 0; this.seatList.length < total; i++) this.seatList.push(this.newSeat(cpuNames[i], 'cpu', null, false));
     for (const s of this.seatList) s.autopilot = false;
+    // 選ばれていないキャラクターを、まだ決まっていない席（CPUなど）にくじで配る
+    const taken = new Set(this.seatList.map((s) => s.chara));
+    const free = shuffled(
+      Array.from({ length: CHARA_COUNT }, (_, c) => c).filter((c) => !taken.has(c)),
+      seed ^ 0x5eed,
+    );
+    for (const s of this.seatList) if (s.chara === null) s.chara = free.shift()!;
+    // 手番の順番もくじで決める
+    const order = turnOrderFor(this.seatList.length, seed);
 
     this.full = createGame({
       board: getBoard(boardId),
-      players: this.seatList.map((s) => ({ name: s.name, isCpu: s.kind === 'cpu' })),
+      players: this.seatList.map((s) => ({ name: s.name, isCpu: s.kind === 'cpu', chara: s.chara! })),
       deck: buildSharedDeck(ALL_CARD_IDS),
       seed,
+      order,
     });
     this.gameNo++;
     this.seq = 0;
@@ -425,9 +533,11 @@ export class HostSession implements GameSession {
       seat.conn = conn;
       seat.watched = -1;
     } else {
-      if (this.full) return reject('started');
+      if (this.full || this.choice) return reject('started');
       if (this.humanCount >= MAX_PLAYERS) return reject('full');
-      seat = this.newSeat(msg.name.slice(0, 8) || this.unusedName(), 'human', msg.clientId, false);
+      const name = msg.name.trim().slice(0, 8);
+      seat = this.newSeat(name || defaultName(this.seatList.length), 'human', msg.clientId, false);
+      seat.custom = name !== '';
       seat.conn = conn;
       this.seatList.push(seat);
     }
@@ -459,6 +569,12 @@ export class HostSession implements GameSession {
       case 'leave':
         seat.conn?.close();
         break;
+      case 'rename':
+        if (typeof msg.name === 'string') this.renameSeat(seat, msg.name);
+        break;
+      case 'pick':
+        this.pick(seat, msg.chara);
+        break;
     }
   }
 
@@ -469,6 +585,8 @@ export class HostSession implements GameSession {
       this.seatList = this.seatList.filter((s) => s !== seat);
     }
     this.seatsChanged();
+    // キャラクター選びの途中で抜けたら、残りの人がそろっていれば始める
+    if (!this.full) this.startIfAllPicked();
     if (!this.full || this.waiting) return;
     this.watchWaiter?.();
     // その人の操作待ちだったら、CPUが代わりに操作する
@@ -483,8 +601,12 @@ export class HostSession implements GameSession {
     const seats = this.seats;
     // 待合室、または保存から開き直して参加者を待っている間は、待合室として扱う
     if (!this.full || this.waiting) {
-      this.seatList.forEach((s, i) => s.conn?.send({ t: 'lobby', you: i, seats }));
-      this.callbacks.onLobby?.(seats);
+      // 名前をつけていない人は、席の順の「プレイヤーN」にそろえる（誰かが抜けると番号が詰まる）
+      if (!this.full) this.seatList.forEach((s, i) => s.kind === 'human' && !s.custom && (s.name = defaultName(i)));
+      const fresh = this.seats;
+      const choosing = this.choice !== null;
+      this.seatList.forEach((s, i) => s.conn?.send({ t: 'lobby', you: i, seats: fresh, choosing }));
+      this.callbacks.onLobby?.(fresh, choosing);
       return;
     }
     for (const s of this.seatList) s.conn?.send({ t: 'seats', seats });
@@ -495,14 +617,8 @@ export class HostSession implements GameSession {
   // 小さな道具
   // ============================================================
 
-  /** 名前をつけなかった参加者の名前（プレイヤー2、プレイヤー3…） */
-  private unusedName(): string {
-    const used = new Set(this.seatList.map((s) => s.name));
-    for (let n = 2; ; n++) if (!used.has(`プレイヤー${n}`)) return `プレイヤー${n}`;
-  }
-
   private newSeat(name: string, kind: 'human' | 'cpu', clientId: string | null, host: boolean): Seat {
-    return { name, kind, host, clientId, conn: null, watched: -1, autopilot: false };
+    return { name, kind, host, custom: true, chara: null, clientId, conn: null, watched: -1, autopilot: false };
   }
 
   private later(fn: () => void, ms: number): ReturnType<typeof setTimeout> {

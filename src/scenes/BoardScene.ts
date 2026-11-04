@@ -162,7 +162,7 @@ export class BoardScene extends Phaser.Scene {
     this.piecePos = state.players.map((p) => p.trail[p.trail.length - 1]);
     state.players.forEach((_, i) => {
       const [x, y] = this.pieceXY(i);
-      this.pieces.push(this.add.container(x, y, this.pieceParts(i)).setDepth(10 + i));
+      this.pieces.push(this.add.container(x, y, this.pieceParts(state.players[i].chara)).setDepth(10 + i));
     });
 
     this.sync(state);
@@ -190,7 +190,7 @@ export class BoardScene extends Phaser.Scene {
     for (const [gate, text] of this.crackTexts) {
       const cracks = state.players
         .filter((p) => (p.gateCracks[gate] ?? 0) > 0 && p.trail[p.trail.length - 1] === gate)
-        .map((p) => `${PLAYER_ICONS[p.index]}ひび${p.gateCracks[gate]}`);
+        .map((p) => `${PLAYER_ICONS[p.chara]}ひび${p.gateCracks[gate]}`);
       text.setText(cracks.join(' '));
     }
   }
@@ -321,7 +321,7 @@ export class BoardScene extends Phaser.Scene {
     }
   }
 
-  /** コマ。足元にプレイヤーの色の台を敷いたキャラクター（画像が無ければ色の丸と絵文字） */
+  /** コマ。足元にキャラクターの色の台を敷いたキャラクター（画像が無ければ色の丸と絵文字）。i はキャラクターの番号 */
   private pieceParts(i: number): Phaser.GameObjects.GameObject[] {
     const color = hex(PLAYER_COLORS[i]);
     if (!this.textures.exists(`chara${i}`)) {
