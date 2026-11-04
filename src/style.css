@@ -809,6 +809,18 @@ img.speaker-img {
   color: var(--ink);
 }
 
+/* バージョン表記（タイトル画面の、いちばん下） */
+#app-version {
+  margin-top: -6px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+}
+
 /* 前のゲームの再開 */
 #resume-box {
   display: flex;
