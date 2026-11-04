@@ -20,6 +20,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const face = (player: number, cls = 'face') => img(ASSET.chara(player), PLAYER_ICONS[player], cls);
 /** 使われたカードを表示しておく時間 */
 const CARD_SHOW_MS = { cpu: 2400, human: 1000 };
+/** サイコロが転がっている時間 */
+const DICE_ROLL_MS = 650;
+
+// サイコロの絵を先に読み込んでおく（転がしている間に絵が欠けないように）
+for (let n = 1; n <= 6; n++) new Image().src = ASSET.dice(n);
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -71,6 +76,7 @@ export class App implements GameView {
     this.hideModal();
     this.game?.stop();
     this.messages = [];
+    delete $('#speaker').dataset.player;
 
     if (!this.phaser) {
       const boardEl = $('#board');
@@ -120,6 +126,7 @@ export class App implements GameView {
       else if (e.type === 'cardPlayed' || e.type === 'countered') await this.showCardUse(e, state);
       else if (e.type === 'step' || e.type === 'pushedBack' || e.type === 'swapped') await this.scene.animate(e);
       else if (e.type === 'turnStart') {
+        this.showSpeaker(e.player, state);
         void this.scene.animate(e);
         await sleep(350);
       } else if (text) await sleep(420);
@@ -158,12 +165,29 @@ export class App implements GameView {
   private async showDice(dice: number[], value: number): Promise<void> {
     const box = $('#dice');
     const faces = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-    box.replaceChildren(
-      el('div', { class: 'dice-faces' }, dice.map((d) => img(ASSET.dice(d), faces[d], 'dice-face'))),
-      el('div', { class: 'dice-value', text: String(value) }),
-    );
+    const randomFace = () => 1 + Math.floor(Math.random() * 6);
+    const dieEls = dice.map(() => img(ASSET.dice(randomFace()), faces[randomFace()], 'dice-face'));
+    const wraps = dieEls.map((d) => el('div', { class: 'die rolling' }, [d]));
+    const valueEl = el('div', { class: 'dice-value', text: String(value) });
+    valueEl.style.visibility = 'hidden';
+    box.replaceChildren(el('div', { class: 'dice-faces' }, wraps), valueEl);
     box.classList.remove('hidden');
-    await sleep(750);
+
+    // その場で回しながら目を次々に変え、最後に出た目でピタッと止める
+    const setFace = (i: number, n: number) => {
+      const node = wraps[i].firstElementChild as HTMLElement;
+      if (node instanceof HTMLImageElement) node.src = ASSET.dice(n);
+      else node.textContent = faces[n];
+    };
+    const shuffle = setInterval(() => wraps.forEach((_, i) => setFace(i, randomFace())), 80);
+    await sleep(DICE_ROLL_MS);
+    clearInterval(shuffle);
+    dice.forEach((d, i) => {
+      setFace(i, d);
+      wraps[i].classList.replace('rolling', 'landed');
+    });
+    valueEl.style.visibility = '';
+    await sleep(700);
     box.classList.add('hidden');
   }
 
@@ -211,6 +235,19 @@ export class App implements GameView {
       return chip;
     });
     $('#players').replaceChildren(...chips);
+    this.showSpeaker(s.current, s);
+  }
+
+  /** メッセージ窓の上に、手番のキャラクターのバストアップを出す */
+  private showSpeaker(player: number, s: GameState): void {
+    const box = $('#speaker');
+    if (box.dataset.player === String(player)) return;
+    box.dataset.player = String(player);
+    box.style.setProperty('--pc', PLAYER_COLORS[player]);
+    box.replaceChildren(
+      el('div', { class: 'speaker-pic' }, [img(ASSET.chara(player), PLAYER_ICONS[player], 'speaker-img')]),
+      el('div', { class: 'speaker-name', text: s.players[player].name }),
+    );
   }
 
   private renderHand(s: GameState): void {

@@ -612,6 +612,99 @@ img.card-attr {
 .dice-face {
   width: 96px;
   height: 96px;
+  font-size: 88px;
+  line-height: 96px;
+  text-align: center;
+}
+
+/* 転がっている間はその場で回し、止まったら少し弾ませる */
+.die.rolling {
+  animation: dice-spin 0.32s linear infinite;
+}
+
+.die.landed {
+  animation: dice-land 0.28s ease-out;
+}
+
+@keyframes dice-spin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.9);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes dice-land {
+  0% {
+    transform: rotate(-12deg) scale(1.25);
+  }
+  60% {
+    transform: rotate(4deg) scale(0.95);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* ---- 手番のキャラクター（メッセージ窓の上） ---- */
+
+#panel {
+  position: relative;
+}
+
+#speaker {
+  position: absolute;
+  left: 10px;
+  bottom: calc(100% - 4px);
+  width: 92px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.speaker-pic {
+  height: 92px;
+  overflow: hidden;
+  border: 3px double #f4efe6;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 0 0 2px #1c1830;
+  background: radial-gradient(circle at 50% 35%, #fff 0%, color-mix(in srgb, var(--pc) 45%, #fff) 75%);
+}
+
+/* 全身の絵を大きく表示して、頭から胸までを切り抜く */
+.speaker-img {
+  display: block;
+  width: 160%;
+  height: auto;
+  max-width: none;
+  margin: -14% 0 0 -30%;
+}
+
+.pic-fallback.speaker-img {
+  width: 100%;
+  margin: 0;
+  font-size: 56px;
+  line-height: 92px;
+  text-align: center;
+}
+
+.speaker-name {
+  background: #1c1830;
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: center;
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 3px double #f4efe6;
+  border-top: 2px solid var(--pc);
+  border-radius: 0 0 6px 6px;
 }
 
 .cast-who,

@@ -5,22 +5,23 @@ import type { BoardDef, GameEvent, GameState, SquareType } from '../core/types';
 import { ASSET } from '../ui/assets';
 import { PLAYER_COLORS, PLAYER_ICONS, SQUARE_STYLE } from '../ui/theme';
 
-const UNIT = 84;
-const MARGIN = 56;
-const RADIUS = 28;
+// 横4列。ボード全体の幅は以前（横6列）とほぼ同じなので、画面上でもマスが1.5倍になる
+const UNIT = 134;
+const MARGIN = 66;
+const RADIUS = 42;
 /** コマ（キャラクター）の表示の大きさ */
-const PIECE_SIZE = 46;
+const PIECE_SIZE = 55;
 /** 切り株の土台を敷かず、絵だけを大きく描くマス */
 const BIG_ICON_SQUARES = new Set<SquareType>(['start', 'goal', 'gate']);
 const ICON_SQUARES: SquareType[] = ['start', 'card', 'exchange', 'coin', 'gate', 'goal'];
 /** マス・コマの画像の最大の大きさ。これより大きい画像は読み込み後に縮める */
-const TEXTURE_MAX = 256;
+const TEXTURE_MAX = 320;
 /** 同じマスに複数のコマがいるときのずらし方 */
 const SLOT_OFFSETS = [
-  [-13, -13],
-  [13, -13],
-  [-13, 13],
-  [13, 13],
+  [-20, -20],
+  [20, -20],
+  [-20, 20],
+  [20, 20],
 ];
 
 const hex = (c: string) => Number.parseInt(c.slice(1), 16);
@@ -91,14 +92,14 @@ export class BoardScene extends Phaser.Scene {
       this.add
         .tileSprite(-pad, -pad, this.worldW + pad * 2, this.worldH + pad * 2, 'bg_forest')
         .setOrigin(0)
-        .setTileScale(0.6);
+        .setTileScale(1.2);
     }
 
     // 道（ふちどり＋土の色）
     const g = this.add.graphics();
     for (const [width, color, alpha] of [
-      [14, 0x6b4e2e, 0.5],
-      [9, 0xecd9ad, 1],
+      [20, 0x6b4e2e, 0.5],
+      [13, 0xecd9ad, 1],
     ]) {
       g.lineStyle(width, color, alpha);
       for (const n of this.board.nodes) {
@@ -123,7 +124,7 @@ export class BoardScene extends Phaser.Scene {
             this.label((x + ex) / 2, (y + ey) / 2, e.dice!.join('・'), '#7a2e2e');
           }
         }
-        const crack = this.addText(x, y + RADIUS + 12, '', { fontSize: '13px', color: '#7a2e2e', fontStyle: 'bold' });
+        const crack = this.addText(x, y + RADIUS + 12, '', { fontSize: '15px', color: '#7a2e2e', fontStyle: 'bold' });
         crack.setOrigin(0.5);
         this.crackTexts.set(n.id, crack);
       }
@@ -153,7 +154,7 @@ export class BoardScene extends Phaser.Scene {
       const [x, y] = this.nodeXY(id);
       const icon = this.textures.exists('trap_fire')
         ? this.add.image(x, y + 4, 'trap_fire').setDisplaySize(RADIUS * 2.6, RADIUS * 2.6) // 地面に描かれた魔法陣なので、マス全体に重ねる
-        : this.addText(x + 18, y - 22, '🔥', { fontSize: '22px' });
+        : this.addText(x + 27, y - 33, '🔥', { fontSize: '30px' });
       this.trapIcons.set(id, icon.setOrigin(0.5).setDepth(5));
     }
     for (const [gate, text] of this.crackTexts) {
@@ -220,7 +221,8 @@ export class BoardScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const w = this.scale.width;
     cam.setZoom(Math.min(1.1 * PIXEL_RATIO, w / this.worldW));
-    cam.setBounds(0, 0, this.worldW, this.worldH);
+    // 下側は、左下に重なる手番キャラの絵に隠れないよう、ゴールより少し先までスクロールできるようにする
+    cam.setBounds(0, 0, this.worldW, this.worldH + 220);
   }
 
   private nodeXY(id: string): [number, number] {
@@ -277,7 +279,7 @@ export class BoardScene extends Phaser.Scene {
       const size = big ? RADIUS * 2.6 : RADIUS * 1.5;
       this.add.image(x, y, key).setDisplaySize(size, size);
     } else if (style.icon) {
-      this.addText(x, y, style.icon, { fontSize: '26px' }).setOrigin(0.5);
+      this.addText(x, y, style.icon, { fontSize: '38px' }).setOrigin(0.5);
     }
   }
 
@@ -285,8 +287,8 @@ export class BoardScene extends Phaser.Scene {
   private pieceParts(i: number): Phaser.GameObjects.GameObject[] {
     const color = hex(PLAYER_COLORS[i]);
     if (!this.textures.exists(`chara${i}`)) {
-      const body = this.add.circle(0, 0, 16, color).setStrokeStyle(3, 0xffffff);
-      return [body, this.addText(0, 0, PLAYER_ICONS[i], { fontSize: '18px' }).setOrigin(0.5)];
+      const body = this.add.circle(0, 0, 20, color).setStrokeStyle(3, 0xffffff);
+      return [body, this.addText(0, 0, PLAYER_ICONS[i], { fontSize: '22px' }).setOrigin(0.5)];
     }
     const stand = this.add.ellipse(0, PIECE_SIZE * 0.32, PIECE_SIZE * 0.72, PIECE_SIZE * 0.28, color).setStrokeStyle(2, 0xffffff);
     const chara = this.add.image(0, 0, `chara${i}`).setDisplaySize(PIECE_SIZE, PIECE_SIZE).setOrigin(0.5, 0.6);
@@ -299,7 +301,7 @@ export class BoardScene extends Phaser.Scene {
 
   private label(x: number, y: number, text: string, color: string): void {
     this.addText(x, y, text, {
-      fontSize: '13px',
+      fontSize: '15px',
       color,
       fontStyle: 'bold',
       backgroundColor: '#ffffffcc',
