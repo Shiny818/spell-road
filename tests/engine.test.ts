@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateBoard } from '../src/core/board';
-import { applyAction, getLegalActions, RuleError, swapTargets } from '../src/core/engine';
+import { applyAction, createGame, getLegalActions, RuleError, swapTargets } from '../src/core/engine';
 import type { BoardDef } from '../src/core/types';
 import { at, FOREST, give, placeAt, run, setup } from './helpers';
 
@@ -24,6 +24,20 @@ describe('ボード', () => {
       ],
     };
     expect(validateBoard(bad)).toContain('s: 分岐できるのは関所だけです');
+  });
+
+  it('マルチプレイ（コインなし）では、コインマスは「何もなし」のマスになる', () => {
+    expect(FOREST.nodes.some((n) => n.type === 'coin')).toBe(true);
+    const s = setup();
+    expect(s.board.nodes.some((n) => n.type === 'coin')).toBe(false);
+    expect(s.board.nodes.find((n) => n.id === 'a4')!.type).toBe('empty');
+    // 元のボードのデータは書き換えない
+    expect(FOREST.nodes.find((n) => n.id === 'a4')!.type).toBe('coin');
+  });
+
+  it('コインありのゲームでは、コインマスはそのまま残る', () => {
+    const s = createGame({ board: FOREST, players: [{ name: 'A', isCpu: true }, { name: 'B', isCpu: true }], deck: [], seed: 1, coinsEnabled: true });
+    expect(s.board.nodes.find((n) => n.id === 'a4')!.type).toBe('coin');
   });
 });
 

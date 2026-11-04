@@ -50,9 +50,13 @@ export function createGame(config: GameConfig): GameState {
     throw new Error('プレイヤーは2〜4人です');
   }
   const info = boardInfo(config.board);
+  // コインはマルチプレイでは使わないので、コインマスは「何もなし」のマスにして見せない
+  const board: BoardDef = config.coinsEnabled
+    ? config.board
+    : { ...config.board, nodes: config.board.nodes.map((n) => (n.type === 'coin' ? { ...n, type: 'empty' } : n)) };
 
   const s: GameState = {
-    board: config.board,
+    board,
     players: config.players.map((p, index) => ({
       index,
       name: p.name,
