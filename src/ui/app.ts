@@ -6,7 +6,8 @@ import { buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../core/cards';
 import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate } from '../core/engine';
 import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../core/types';
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
-import { ASSET, img } from './assets';
+import { ASSET, img, imgChain } from './assets';
+import { moodByEvent, moodByRank, type Expression } from './expression';
 import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
@@ -50,6 +51,8 @@ export class App implements GameView {
   private phaser: Phaser.Game | null = null;
   private game: LocalGame | null = null;
   private messages: string[] = [];
+  /** 手番のキャラクターの、できごとに反応した表情（次の手番まで続く） */
+  private speakerMood: { player: number; expr: Expression } | null = null;
   /** 確認画面の中で選んでいるもの（交換・捨てるカード） */
   private selection: number[] = [];
 
@@ -76,7 +79,10 @@ export class App implements GameView {
     this.hideModal();
     this.game?.stop();
     this.messages = [];
-    delete $('#speaker').dataset.player;
+    const speaker = $('#speaker');
+    delete speaker.dataset.key;
+    delete speaker.dataset.player;
+    this.speakerMood = null;
 
     if (!this.phaser) {
       const boardEl = $('#board');
@@ -122,6 +128,8 @@ export class App implements GameView {
     for (const e of events) {
       const text = describeEvent(e, state);
       if (text) this.pushMessage(text);
+      if (e.type === 'turnStart') this.speakerMood = null;
+      else this.reactSpeaker(e, state);
       if (e.type === 'roll') await this.showDice(e.dice, e.value);
       else if (e.type === 'cardPlayed' || e.type === 'countered') await this.showCardUse(e, state);
       else if (e.type === 'step' || e.type === 'pushedBack' || e.type === 'swapped') await this.scene.animate(e);
@@ -238,16 +246,40 @@ export class App implements GameView {
     this.showSpeaker(s.current, s);
   }
 
-  /** メッセージ窓の上に、手番のキャラクターのバストアップを出す */
+  /**
+   * メッセージ窓の上に、手番のキャラクターのバストアップを出す。
+   * 表情は、手番の間に起きたできごと（カードを使った・攻撃を受けた）を優先し、なければ順位で決める。
+   */
   private showSpeaker(player: number, s: GameState): void {
+    const expr = this.speakerMood?.player === player ? this.speakerMood.expr : moodByRank(s, player);
     const box = $('#speaker');
-    if (box.dataset.player === String(player)) return;
+    const key = `${player}:${expr}`;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key;
     box.dataset.player = String(player);
+    box.dataset.expr = expr;
     box.style.setProperty('--pc', PLAYER_COLORS[player]);
-    box.replaceChildren(
-      el('div', { class: 'speaker-pic' }, [img(ASSET.chara(player), PLAYER_ICONS[player], 'speaker-img')]),
-      el('div', { class: 'speaker-name', text: s.players[player].name }),
+    // 表情の絵 → ふつうの顔のバストアップ → 全身の絵を切り抜いたもの → 絵文字、の順に試す
+    const pic = imgChain(
+      [
+        ...(expr === 'normal' ? [] : [{ src: ASSET.bust(player, expr), cls: 'speaker-img' }]),
+        { src: ASSET.bust(player, 'normal'), cls: 'speaker-img' },
+        { src: ASSET.chara(player), cls: 'speaker-img crop' },
+      ],
+      PLAYER_ICONS[player],
+      'speaker-img',
     );
+    box.replaceChildren(el('div', { class: 'speaker-pic' }, [pic]), el('div', { class: 'speaker-name', text: s.players[player].name }));
+  }
+
+  /** できごとに合わせて、手番のキャラクターの表情を変える */
+  private reactSpeaker(e: GameEvent, s: GameState): void {
+    const player = Number($('#speaker').dataset.player);
+    if (Number.isNaN(player)) return;
+    const expr = moodByEvent(e, player);
+    if (!expr) return;
+    this.speakerMood = { player, expr };
+    this.showSpeaker(player, s);
   }
 
   private renderHand(s: GameState): void {
@@ -340,7 +372,17 @@ export class App implements GameView {
     for (const v of variants) {
       let label = '使う';
       let content: (HTMLElement | string)[] | null = null;
-      if (v.target !== undefined) content = [face(v.target), `${s.players[v.target].name}に使う`];
+      if (v.target !== undefined) {
+        // 相手を選ぶときの手がかりに、ゴールまでの残りマス数と手札の枚数を見せる
+        const t = s.players[v.target];
+        content = [
+          face(v.target),
+          el('span', { class: 'target-label' }, [
+            el('span', { text: `${t.name}に使う` }),
+            el('span', { class: 'target-info', text: `ゴールまで${distanceToGoal(s, t)}マス・手札${t.hand.length}枚` }),
+          ]),
+        ];
+      }
       if (v.choice !== undefined) label = c.cardId === 'unmei_no_hari' ? `出目を${v.choice > 0 ? '+1' : '-1'}（→ ${Math.max(1, s.turn.value! + v.choice)}）` : `出目を ${v.choice} にする`;
       choices.append(
         button(content ?? label, () => {

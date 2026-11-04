@@ -7,6 +7,8 @@ const BASE = `${import.meta.env.BASE_URL}assets/`;
 
 export const ASSET = {
   chara: (player: number) => `${BASE}chara/p${player + 1}.png`,
+  /** バストアップ。表情があれば p1_brave.png、ふつうの顔は p1.png */
+  bust: (player: number, expr: string) => `${BASE}chara/bust/p${player + 1}${expr === 'normal' ? '' : `_${expr}`}.png`,
   square: (type: SquareType) => `${BASE}square/${type}.png`,
   squareBase: `${BASE}square/base.png`,
   card: (cardId: string) => `${BASE}card/${cardId}.png`,
@@ -18,6 +20,36 @@ export const ASSET = {
   cardBack: `${BASE}ui/card_back.png`,
   forestTile: `${BASE}bg/forest_tile.png`,
 };
+
+/** 読み込めなかった画像。同じ画像を何度も取りに行かないように覚えておく */
+const missing = new Set<string>();
+
+/**
+ * 候補の画像を順に試し、最初に読み込めたものを表示する。どれも無ければ代わりの文字にする。
+ * 候補ごとに class を変えられる（全身の絵を切り抜いて使う、など）。
+ */
+export function imgChain(candidates: { src: string; cls: string }[], fallback: string, fallbackCls: string): HTMLElement {
+  const list = candidates.filter((c) => !missing.has(c.src));
+  const image = document.createElement('img');
+  image.alt = '';
+  image.draggable = false;
+  let i = 0;
+  const load = () => {
+    image.className = `pic ${list[i].cls}`;
+    image.src = list[i].src;
+  };
+  image.addEventListener('error', () => {
+    if (i < list.length) missing.add(list[i++].src);
+    if (i < list.length) return load();
+    const span = document.createElement('span');
+    span.className = `pic-fallback ${fallbackCls}`;
+    span.textContent = fallback;
+    image.replaceWith(span);
+  });
+  if (list.length > 0) load();
+  else queueMicrotask(() => image.dispatchEvent(new Event('error')));
+  return image;
+}
 
 /** 画像の要素。読み込めなければ代わりの文字（絵文字）にする */
 export function img(src: string, fallback: string, cls = ''): HTMLElement {
