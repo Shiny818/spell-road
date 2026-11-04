@@ -2,6 +2,7 @@
 
 import Phaser from 'phaser';
 import type { BoardDef, GameEvent, GameState, SquareType } from '../core/types';
+import { BOARDS } from '../data/boards';
 import { ASSET } from '../ui/assets';
 import { PLAYER_COLORS, PLAYER_ICONS, SQUARE_STYLE } from '../ui/theme';
 
@@ -23,6 +24,13 @@ const SLOT_OFFSETS = [
   [-20, 20],
   [20, 20],
 ];
+
+/** ボードごとの色（背景の画像が無いときの地の色・道の色） */
+const BOARD_LOOK: Record<string, { background: string; road: number; roadEdge: number }> = {
+  forest: { background: '#bfe3b4', road: 0xecd9ad, roadEdge: 0x6b4e2e },
+  // 岩山: 灰色がかった岩肌に、白っぽい石の道
+  mountain: { background: '#cbbfab', road: 0xf1e8d6, roadEdge: 0x5e5244 },
+};
 
 const hex = (c: string) => Number.parseInt(c.slice(1), 16);
 
@@ -63,7 +71,11 @@ export class BoardScene extends Phaser.Scene {
     this.load.image('square_base', ASSET.squareBase);
     this.load.image('trap_fire', ASSET.trapFire);
     this.load.image('trap_ice', ASSET.trapIce);
-    this.load.image('bg_forest', ASSET.forestTile);
+    for (const b of BOARDS) {
+      this.load.image(`bg_${b.id}`, ASSET.boardTile(b.id));
+      // はじまりの森は切り株の土台（square/base.png）を使うので、専用の土台は読まない
+      if (b.id !== 'forest') this.load.image(`square_base_${b.id}`, ASSET.squareBaseOf(b.id));
+    }
   }
 
   create(): void {
@@ -100,11 +112,14 @@ export class BoardScene extends Phaser.Scene {
     this.worldW = Math.max(...xs) * UNIT + MARGIN * 2;
     this.worldH = Math.max(...ys) * UNIT + MARGIN * 2;
 
-    if (this.textures.exists('bg_forest')) {
+    const look = BOARD_LOOK[this.board.id] ?? BOARD_LOOK.forest;
+    this.cameras.main.setBackgroundColor(look.background);
+    const tile = `bg_${this.board.id}`;
+    if (this.textures.exists(tile)) {
       // ボードより広めに敷いて、ドラッグしても端が見えないようにする
       const pad = 600;
       this.add
-        .tileSprite(-pad, -pad, this.worldW + pad * 2, this.worldH + pad * 2, 'bg_forest')
+        .tileSprite(-pad, -pad, this.worldW + pad * 2, this.worldH + pad * 2, tile)
         .setOrigin(0)
         .setTileScale(1.2);
     }
@@ -112,8 +127,8 @@ export class BoardScene extends Phaser.Scene {
     // 道（ふちどり＋土の色）
     const g = this.add.graphics();
     for (const [width, color, alpha] of [
-      [20, 0x6b4e2e, 0.5],
-      [13, 0xecd9ad, 1],
+      [20, look.roadEdge, 0.5],
+      [13, look.road, 1],
     ]) {
       g.lineStyle(width, color, alpha);
       for (const n of this.board.nodes) {
@@ -262,7 +277,7 @@ export class BoardScene extends Phaser.Scene {
    * 大きな画像をそのまま小さく描くとギザギザになるため、半分ずつ縮めてなめらかにする。
    */
   private shrinkTextures(): void {
-    const keys = [...Array.from({ length: 4 }, (_, i) => `chara${i}`), ...ICON_SQUARES.map((t) => `square_${t}`), 'square_base', 'trap_fire', 'trap_ice'];
+    const keys = [...Array.from({ length: 4 }, (_, i) => `chara${i}`), ...ICON_SQUARES.map((t) => `square_${t}`), 'square_base', ...BOARDS.map((b) => `square_base_${b.id}`), 'trap_fire', 'trap_ice'];
     for (const key of keys) {
       if (!this.textures.exists(key)) continue;
       const src = this.textures.get(key).getSourceImage() as HTMLImageElement;
@@ -292,7 +307,10 @@ export class BoardScene extends Phaser.Scene {
     const hasIcon = this.textures.exists(key);
     const big = hasIcon && BIG_ICON_SQUARES.has(type);
     if (!big) {
-      if (this.textures.exists('square_base')) this.add.image(x, y, 'square_base').setDisplaySize(RADIUS * 2.4, RADIUS * 2.4);
+      // ボード専用の土台（岩山なら石の台など）があればそれを、無ければ切り株を使う
+      const own = `square_base_${this.board.id}`;
+      const base = this.textures.exists(own) ? own : 'square_base';
+      if (this.textures.exists(base)) this.add.image(x, y, base).setDisplaySize(RADIUS * 2.4, RADIUS * 2.4);
       else this.add.circle(x, y, RADIUS, hex(style.color)).setStrokeStyle(3, 0x6b5638);
     }
     if (hasIcon) {

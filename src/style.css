@@ -120,6 +120,13 @@ body {
   flex: 1;
 }
 
+/* マップの名前は長いので、詰めて表示する */
+.board-select .btn {
+  padding: 10px 6px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
 .segmented .btn.selected {
   background: var(--primary);
   color: var(--primary-ink);

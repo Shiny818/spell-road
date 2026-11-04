@@ -11,6 +11,8 @@ export const ASSET = {
   bust: (player: number, expr: string) => `${BASE}chara/bust/p${player + 1}${expr === 'normal' ? '' : `_${expr}`}.png`,
   square: (type: SquareType) => `${BASE}square/${type}.png`,
   squareBase: `${BASE}square/base.png`,
+  /** ボード専用のマスの土台（無ければ square/base.png の切り株を使う） */
+  squareBaseOf: (boardId: string) => `${BASE}square/base_${boardId}.png`,
   card: (cardId: string) => `${BASE}card/${cardId}.png`,
   attr: (attr: Attribute) => `${BASE}attr/${attr}.png`,
   dice: (n: number) => `${BASE}ui/dice_${n}.png`,
@@ -22,7 +24,8 @@ export const ASSET = {
   statusSeal: `${BASE}icon/status_seal.png`,
   statusGuard: `${BASE}icon/status_guard.png`,
   cardBack: `${BASE}ui/card_back.png`,
-  forestTile: `${BASE}bg/forest_tile.png`,
+  /** ボードの背景（つなぎ目なしの絵）。ボードの id ごと */
+  boardTile: (boardId: string) => `${BASE}bg/${boardId}_tile.png`,
 };
 
 /** 読み込めなかった画像。同じ画像を何度も取りに行かないように覚えておく */

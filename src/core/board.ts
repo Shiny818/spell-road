@@ -44,6 +44,18 @@ export function boardInfo(def: BoardDef): BoardInfo {
   return info;
 }
 
+/**
+ * 関所を出目 v で抜けたときに進む分岐先。
+ * 出目に合う分岐先がなければ（封印が砕けて、通過の条件外の目で抜けたとき）、出目がいちばん近い分岐先に進む。
+ * 例: 2・3で近道、4・5で遠回りなら、1は近道、6は遠回り
+ */
+export function branchEdge(gate: BoardNode, v: number): BoardNode['next'][number] {
+  const exact = gate.next.find((e) => e.dice?.includes(v));
+  if (exact) return exact;
+  const gap = (e: BoardNode['next'][number]) => Math.min(...(e.dice ?? [Infinity]).map((d) => Math.abs(d - v)));
+  return gate.next.reduce((best, e) => (gap(e) < gap(best) ? e : best), gate.next[0]);
+}
+
 /** ボードのデータに問題があればエラーメッセージを返す */
 export function validateBoard(def: BoardDef): string[] {
   const errors: string[] = [];

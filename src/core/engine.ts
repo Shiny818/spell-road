@@ -2,7 +2,7 @@
 // 状態は「操作（Action）を順番に適用して変わる」形にしている。
 // applyAction は元の状態を変更せず、新しい状態を返す。
 
-import { boardInfo, validateBoard } from './board';
+import { boardInfo, branchEdge, validateBoard } from './board';
 import { ALL_ATTACKS, getCardDef, TARGET_ATTACKS, TRAP_BACK_STEPS, TRAP_CARD_OF, TRAP_CARDS } from './cards';
 import { nextRandom } from './rng';
 import type {
@@ -593,8 +593,7 @@ function doConfirmMove(s: GameState): void {
   const gate = boardInfo(s.board).nodes.get(gateId)!;
   const v = Math.min(6, Math.max(1, value));
   if (s.turn.gateBroken || gate.gate!.pass.includes(v)) {
-    // 出目に合う分岐先。なければ最初のルート（封印が砕けたときの通常ルート）
-    const edge = gate.next.find((e) => e.dice?.includes(v)) ?? gate.next[0];
+    const edge = branchEdge(gate, v);
     delete p.gateCracks[gateId];
     // 関所を抜けるのも移動なので、吹雪はここで解ける（1マスの半分は1マス）
     p.statuses.blizzard = false;

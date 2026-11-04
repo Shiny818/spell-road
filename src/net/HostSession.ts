@@ -2,8 +2,8 @@
 // 「その人に見せてよい状態」と、その人が今できる操作を送る（docs/spec.md 6.6）。
 // 1人プレイも、通信なし（transport が null）のホストとして同じように動かす。
 
-import forest from '../data/boards/forest.json';
 import { chooseCpuAction } from '../ai/cpu';
+import { DEFAULT_BOARD_ID, getBoard } from '../data/boards';
 import { ALL_CARD_IDS, buildSharedDeck } from '../core/cards';
 import { actionKey, applyAction, createGame, expectedActor, getLegalActions } from '../core/engine';
 import { redactFor } from '../core/view';
@@ -161,8 +161,11 @@ export class HostSession implements GameSession {
     return this.seatList[this.me].autopilot ? [] : getLegalActions(this.full, this.me);
   }
 
-  /** ゲームを始める。足りない席はCPUで埋める（もう一度遊ぶときも、これを呼ぶ） */
-  async startGame(cpuCount: number, seed = Math.floor(Math.random() * 2 ** 31)): Promise<void> {
+  /**
+   * ゲームを始める。足りない席はCPUで埋める（もう一度遊ぶときも、これを呼ぶ）。
+   * boardId を省くと、前のゲームと同じボード
+   */
+  async startGame(cpuCount: number, seed = Math.floor(Math.random() * 2 ** 31), boardId = this.full?.board.id ?? DEFAULT_BOARD_ID): Promise<void> {
     this.clearTimers();
     // 前のゲームのCPUの席は作り直す。人の席はそのまま（切断中の人も席は残す）
     this.seatList = this.seatList.filter((s) => s.kind === 'human');
@@ -173,7 +176,7 @@ export class HostSession implements GameSession {
     for (const s of this.seatList) s.autopilot = false;
 
     this.full = createGame({
-      board: forest as BoardDef,
+      board: getBoard(boardId),
       players: this.seatList.map((s) => ({ name: s.name, isCpu: s.kind === 'cpu' })),
       deck: buildSharedDeck(ALL_CARD_IDS),
       seed,

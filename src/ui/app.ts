@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import { ALL_ATTACKS, getCardDef } from '../core/cards';
 import { distanceToGoal, expectedActor, isAtGate, plannedSteps } from '../core/engine';
 import type { Action, CardInstance, GameEvent, GameState } from '../core/types';
+import { BOARDS, DEFAULT_BOARD_ID } from '../data/boards';
 import { ClientSession } from '../net/ClientSession';
 import { HostSession } from '../net/HostSession';
 import { connectToRoom, openRoom } from '../net/peer';
@@ -34,6 +35,18 @@ function clientId(): string {
 }
 
 const LAST_ROOM_KEY = 'spell-road.room';
+const BOARD_KEY = 'spell-road.board';
+
+/** 前に選んだマップ */
+function loadBoardId(): string {
+  try {
+    const id = localStorage.getItem(BOARD_KEY);
+    if (id && BOARDS.some((b) => b.id === id)) return id;
+  } catch {
+    // 保存できない環境では何もしない
+  }
+  return DEFAULT_BOARD_ID;
+}
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -69,6 +82,8 @@ function button(label: string | (HTMLElement | string)[], onClick: () => void, c
 export class App implements GameView {
   private scene = new BoardScene();
   private readonly store = localSaveStore();
+  /** 選んでいるマップ */
+  private boardId = loadBoardId();
   private phaser: Phaser.Game | null = null;
   private session: GameSession | null = null;
   /** いま開いている確認画面の種類（操作できなくなったら閉じるため） */
@@ -94,6 +109,7 @@ export class App implements GameView {
     playBgm('title');
     let cpuCount = 3;
     this.segmented($('#cpu-count'), [1, 2, 3], cpuCount, (n) => (cpuCount = n));
+    this.boardChoices($('#board-select'));
     const name = () => $<HTMLInputElement>('#player-name').value.trim() || 'あなた';
     // 通信対戦では、名前が「あなた」のままだと他の人の画面で紛らわしいので、ホストが「プレイヤー2」などの名前をつける
     const onlineName = () => (name() === 'あなた' ? '' : name());
@@ -119,17 +135,48 @@ export class App implements GameView {
     setInterval(() => this.renderClock(), 250);
   }
 
-  /** 選択肢のボタンを並べる（1つだけ選べる） */
+  /** 人数の選択肢のボタンを並べる（1つだけ選べる） */
   private segmented(box: HTMLElement, values: number[], selected: number, onSelect: (n: number) => void): void {
+    this.choices(
+      box,
+      values.map((n) => ({ value: n, label: `${n}人` })),
+      selected,
+      onSelect,
+    );
+  }
+
+  /** 選択肢のボタンを並べる（1つだけ選べる） */
+  private choices<T>(box: HTMLElement, options: { value: T; label: string }[], selected: T, onSelect: (v: T) => void): void {
     box.replaceChildren(
-      ...values.map((n) => {
-        const b = button(`${n}人`, () => {
-          onSelect(n);
+      ...options.map((o) => {
+        const b = button(o.label, () => {
+          onSelect(o.value);
           box.querySelectorAll('button').forEach((x) => x.classList.toggle('selected', x === b));
         });
-        if (n === selected) b.classList.add('selected');
+        if (o.value === selected) b.classList.add('selected');
         return b;
       }),
+    );
+  }
+
+  /** マップを選ぶボタン。選んだマップは次に開いたときも覚えておく */
+  private boardChoices(box: HTMLElement): void {
+    this.choices(
+      box,
+      BOARDS.map((b) => ({ value: b.id, label: b.name })),
+      this.boardId,
+      (id) => {
+        this.boardId = id;
+        try {
+          localStorage.setItem(BOARD_KEY, id);
+        } catch {
+          // 保存できない環境では何もしない
+        }
+        // タイトル画面と待合室の両方の表示をそろえる
+        for (const other of document.querySelectorAll<HTMLElement>('.board-select')) {
+          if (other !== box) this.boardChoices(other);
+        }
+      },
     );
   }
 
@@ -141,7 +188,7 @@ export class App implements GameView {
     await this.showGameScreen();
     const host = new HostSession(name, this, null, { onGameStart: (s) => this.onGameStart(s) });
     this.session = host;
-    await host.startGame(cpuCount);
+    await host.startGame(cpuCount, undefined, this.boardId);
   }
 
   private async createRoom(name: string): Promise<void> {
@@ -301,12 +348,15 @@ export class App implements GameView {
     controls.dataset.cpu = String(cpu);
     const counts = el('div', { class: 'segmented' });
     this.segmented(counts, options, cpu, (n) => (controls.dataset.cpu = String(n)));
+    const boards = el('div', { class: 'segmented board-select' });
+    this.boardChoices(boards);
     controls.replaceChildren(
+      el('div', { class: 'field' }, [el('span', { text: 'マップ' }), boards]),
       el('div', { class: 'field' }, [el('span', { text: 'CPUの人数（足りない席を埋める）' }), counts]),
       button(
         'ゲーム開始',
         () => {
-          void this.showGameScreen().then(() => host.startGame(Number(controls.dataset.cpu)));
+          void this.showGameScreen().then(() => host.startGame(Number(controls.dataset.cpu), undefined, this.boardId));
         },
         'primary big',
       ),

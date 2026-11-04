@@ -1,6 +1,6 @@
 // CPUの思考（強さ: 普通）。合法手の中から簡単な判断で1つ選ぶ。
 
-import { boardInfo } from '../core/board';
+import { boardInfo, branchEdge } from '../core/board';
 import { getCardDef } from '../core/cards';
 import { currentNode, distanceToGoal, getLegalActions, isAtGate } from '../core/engine';
 import type { Action, CardInstance, GameState } from '../core/types';
@@ -174,8 +174,7 @@ function chooseAtGate(
   const after = (v: number) => {
     const clamped = Math.min(6, Math.max(1, v));
     if (!s.turn.gateBroken && !pass.includes(clamped)) return Infinity;
-    const edge = gate.next.find((e) => e.dice?.includes(clamped)) ?? gate.next[0];
-    return info.distToGoal.get(edge.to)!;
+    return info.distToGoal.get(branchEdge(gate, clamped).to)!;
   };
   const best = Math.min(...[1, 2, 3, 4, 5, 6].map(after));
   const now = after(value);
