@@ -1,20 +1,38 @@
-// HTMLのUI（タイトル・プレイヤー情報・手札・ボタン・確認画面・結果）
+// HTMLのUI（タイトル・待合室・プレイヤー情報・手札・ボタン・確認画面・結果）
 
 import Phaser from 'phaser';
-import forest from '../data/boards/forest.json';
-import { ALL_ATTACKS, ALL_CARD_IDS, buildSharedDeck, getCardDef } from '../core/cards';
-import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate, plannedSteps } from '../core/engine';
-import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../core/types';
+import { ALL_ATTACKS, getCardDef } from '../core/cards';
+import { distanceToGoal, expectedActor, isAtGate, plannedSteps } from '../core/engine';
+import type { Action, CardInstance, GameEvent, GameState } from '../core/types';
+import { ClientSession } from '../net/ClientSession';
+import { HostSession } from '../net/HostSession';
+import { connectToRoom, openRoom } from '../net/peer';
+import { MAX_PLAYERS, normalizeRoomCode, type SeatInfo } from '../net/protocol';
+import type { GameSession, GameView } from '../net/session';
+import { NET_ERROR_TEXT, NetError } from '../net/transport';
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
 import { ASSET, img, imgChain } from './assets';
 import { moodByEvent, moodByRank, type Expression } from './expression';
 import { isSoundOn, onSoundChange, play, playBgm, setSound, soundForEvent, unlock } from './sound';
-import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
 
-const HUMAN = 0;
-const CPU_NAMES = ['ルル', 'ポポ', 'ミミ'];
+/** この端末（ブラウザのタブ）の目印。つなぎ直したときに同じ席に戻るために使う */
+function clientId(): string {
+  const key = 'spell-road.clientId';
+  try {
+    let id = sessionStorage.getItem(key);
+    if (!id) {
+      id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      sessionStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return Math.random().toString(36).slice(2);
+  }
+}
+
+const LAST_ROOM_KEY = 'spell-road.room';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -50,38 +68,210 @@ function button(label: string | (HTMLElement | string)[], onClick: () => void, c
 export class App implements GameView {
   private scene = new BoardScene();
   private phaser: Phaser.Game | null = null;
-  private game: LocalGame | null = null;
+  private session: GameSession | null = null;
+  /** いま開いている確認画面の種類（操作できなくなったら閉じるため） */
+  private modalKind: 'card' | 'prompt' | 'result' | 'notice' | null = null;
   private messages: string[] = [];
   /** 手番のキャラクターの、できごとに反応した表情（次の手番まで続く） */
   private speakerMood: { player: number; expr: Expression } | null = null;
   /** 確認画面の中で選んでいるもの（交換・捨てるカード） */
   private selection: number[] = [];
 
+  /** 自分の席 */
+  private get me(): number {
+    return this.session?.me ?? 0;
+  }
+
+  /** 自分が今できる操作 */
+  private myLegal(_s?: GameState): Action[] {
+    return this.session?.legal ?? [];
+  }
+
   init(): void {
     this.initSound();
     playBgm('title');
     let cpuCount = 3;
-    const counts = $('#cpu-count');
-    for (const n of [1, 2, 3]) {
-      const b = button(`${n}人`, () => {
-        cpuCount = n;
-        counts.querySelectorAll('button').forEach((x) => x.classList.toggle('selected', x === b));
-      });
-      if (n === cpuCount) b.classList.add('selected');
-      counts.append(b);
+    this.segmented($('#cpu-count'), [1, 2, 3], cpuCount, (n) => (cpuCount = n));
+    const name = () => $<HTMLInputElement>('#player-name').value.trim() || 'あなた';
+    // 通信対戦では、名前が「あなた」のままだと他の人の画面で紛らわしいので、ホストが「プレイヤー2」などの名前をつける
+    const onlineName = () => (name() === 'あなた' ? '' : name());
+    $('#start').addEventListener('click', () => void this.startSolo(name(), cpuCount));
+    $('#create-room').addEventListener('click', () => void this.createRoom(onlineName()));
+    $('#join-room').addEventListener('click', () => void this.joinRoom(onlineName()));
+    const codeInput = $<HTMLInputElement>('#room-code');
+    try {
+      codeInput.value = sessionStorage.getItem(LAST_ROOM_KEY) ?? '';
+    } catch {
+      // 保存できない環境では何もしない
     }
-    $('#start').addEventListener('click', () => {
-      const name = $<HTMLInputElement>('#player-name').value.trim() || 'あなた';
-      void this.startGame(name, cpuCount);
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') void this.joinRoom(onlineName());
     });
+    $('#lobby-leave').addEventListener('click', () => this.leave());
+    setInterval(() => this.renderClock(), 250);
   }
 
-  private async startGame(name: string, cpuCount: number): Promise<void> {
-    $('#title').classList.add('hidden');
-    $('#game').classList.remove('hidden');
+  /** 選択肢のボタンを並べる（1つだけ選べる） */
+  private segmented(box: HTMLElement, values: number[], selected: number, onSelect: (n: number) => void): void {
+    box.replaceChildren(
+      ...values.map((n) => {
+        const b = button(`${n}人`, () => {
+          onSelect(n);
+          box.querySelectorAll('button').forEach((x) => x.classList.toggle('selected', x === b));
+        });
+        if (n === selected) b.classList.add('selected');
+        return b;
+      }),
+    );
+  }
+
+  // ============================================================
+  // 1人プレイ・部屋を作る・部屋に入る
+  // ============================================================
+
+  private async startSolo(name: string, cpuCount: number): Promise<void> {
+    await this.showGameScreen();
+    const host = new HostSession(name, this, null, { onGameStart: (s) => this.onGameStart(s) });
+    this.session = host;
+    await host.startGame(cpuCount);
+  }
+
+  private async createRoom(name: string): Promise<void> {
+    this.setTitleBusy('部屋を作っています…');
+    try {
+      const transport = await openRoom();
+      const host = new HostSession(name, this, transport, {
+        onLobby: (seats) => this.renderLobby(seats, 0),
+        onGameStart: (s) => this.onGameStart(s),
+      });
+      this.session = host;
+      this.setTitleBusy(null);
+      this.showLobby(transport.code);
+      this.renderLobby(host.seats, 0);
+    } catch (e) {
+      this.setTitleBusy(null, e instanceof NetError ? NET_ERROR_TEXT[e.kind] : '部屋を作れませんでした。');
+    }
+  }
+
+  private async joinRoom(name: string): Promise<void> {
+    const code = normalizeRoomCode($<HTMLInputElement>('#room-code').value);
+    if (!code) {
+      this.setTitleBusy(null, '部屋コード（5文字）を入れてください。');
+      return;
+    }
+    this.setTitleBusy('つないでいます…');
+    const client = new ClientSession(connectToRoom, code, name, clientId(), this, {
+      onLobby: (seats, you) => this.renderLobby(seats, you),
+      onGameStart: (s) => this.onGameStart(s),
+      onStatus: (text) => this.setNetStatus(text),
+      onEnd: (text) => this.leave(text),
+    });
+    try {
+      await client.start();
+    } catch (e) {
+      this.setTitleBusy(null, e instanceof NetError ? NET_ERROR_TEXT[e.kind] : 'つながりませんでした。');
+      return;
+    }
+    try {
+      sessionStorage.setItem(LAST_ROOM_KEY, code);
+    } catch {
+      // 保存できない環境では何もしない
+    }
+    this.session = client;
+    this.setTitleBusy(null);
+    this.showLobby(code);
+  }
+
+  /** タイトル画面のボタンを押せなくして、状況を出す。text が null なら元に戻す */
+  private setTitleBusy(text: string | null, error = ''): void {
+    $('#title').querySelectorAll<HTMLButtonElement>('.title-panel .btn').forEach((b) => (b.disabled = text !== null));
+    const msg = $('#title-message');
+    msg.textContent = text ?? error;
+    msg.classList.toggle('error', !!error);
+  }
+
+  private showScreen(id: 'title' | 'lobby' | 'game'): void {
+    for (const s of ['title', 'lobby', 'game']) $(`#${s}`).classList.toggle('hidden', s !== id);
+  }
+
+  private showLobby(code: string): void {
+    this.showScreen('lobby');
+    $('#lobby-code').textContent = code;
+  }
+
+  /** 待合室の顔ぶれ。ホストならCPUの人数を選んで始められる */
+  private renderLobby(seats: SeatInfo[], you: number): void {
+    if (!this.session || this.session.state) return;
+    $('#lobby-seats').replaceChildren(
+      ...seats.map((s, i) =>
+        el('li', { style: `--pc:${PLAYER_COLORS[i]}` }, [
+          face(i),
+          el('span', { class: 'lobby-name', text: s.name }),
+          el('span', { class: 'lobby-tag', text: [s.host ? 'ホスト' : '', i === you ? 'あなた' : ''].filter(Boolean).join('・') }),
+        ]),
+      ),
+    );
+    const host = this.session instanceof HostSession ? this.session : null;
+    $('#lobby-leave').textContent = host ? '部屋を閉じる' : '部屋を出る';
+    const controls = $('#lobby-controls');
+    if (!host) {
+      controls.replaceChildren(el('p', { class: 'note', text: 'ホストがゲームを始めるのを待っています…' }));
+      return;
+    }
+    const humans = seats.length;
+    const options = Array.from({ length: MAX_PLAYERS - humans + 1 }, (_, i) => i).filter((n) => humans + n >= 2);
+    let cpu = Number(controls.dataset.cpu ?? MAX_PLAYERS - humans);
+    if (!options.includes(cpu)) cpu = options[options.length - 1];
+    controls.dataset.cpu = String(cpu);
+    const counts = el('div', { class: 'segmented' });
+    this.segmented(counts, options, cpu, (n) => (controls.dataset.cpu = String(n)));
+    controls.replaceChildren(
+      el('div', { class: 'field' }, [el('span', { text: 'CPUの人数（足りない席を埋める）' }), counts]),
+      button(
+        'ゲーム開始',
+        () => {
+          void this.showGameScreen().then(() => host.startGame(Number(controls.dataset.cpu)));
+        },
+        'primary big',
+      ),
+    );
+  }
+
+  /** ゲームが始まった（もう一度、つなぎ直して途中から、も含む） */
+  private async onGameStart(state: GameState): Promise<void> {
+    await this.showGameScreen();
+    this.scene.setup(state);
+    this.messages = [];
+    this.pushMessage(`${state.players[state.current].name}のターン`);
+    this.hideModal();
+  }
+
+  /** 部屋を出てタイトルに戻る。text があれば知らせる */
+  private leave(text?: string): void {
+    this.session?.stop();
+    this.session = null;
+    this.setNetStatus(null);
+    this.hideModal();
+    delete $('#lobby-controls').dataset.cpu;
+    this.showScreen('title');
+    this.setTitleBusy(null);
+    playBgm('title');
+    if (text) {
+      this.showModal([el('p', { text }), el('div', { class: 'choices' }, [button('OK', () => this.hideModal(), 'primary')])], 'notice');
+    }
+  }
+
+  /** 通信の状態（つなぎ直し中など）を画面の上に出す */
+  private setNetStatus(text: string | null): void {
+    const bar = $('#net-status');
+    bar.classList.toggle('hidden', !text);
+    bar.textContent = text ?? '';
+  }
+
+  private async showGameScreen(): Promise<void> {
+    this.showScreen('game');
     playBgm('forest');
     this.hideModal();
-    this.game?.stop();
     this.messages = [];
     const speaker = $('#speaker');
     delete speaker.dataset.key;
@@ -107,21 +297,8 @@ export class App implements GameView {
       new ResizeObserver(() => this.fitBoard()).observe(boardEl);
       this.phaser = game;
     }
-    await this.scene.whenReady();
-
-    const state = createGame({
-      board: forest as BoardDef,
-      players: [
-        { name, isCpu: false },
-        ...CPU_NAMES.slice(0, cpuCount).map((n) => ({ name: n, isCpu: true })),
-      ],
-      deck: buildSharedDeck(ALL_CARD_IDS),
-      seed: Math.floor(Math.random() * 2 ** 31),
-    });
-    this.scene.setup(state);
-    this.game = new LocalGame(state, HUMAN, this);
-    this.pushMessage(`${state.players[state.current].name}のターン`);
-    this.game.start();
+    // ボードの準備（Phaserの起動）は待たない。画面が裏に回っていると起動しないため。
+    // 起動前に届いた状態は BoardScene が覚えておき、起動したときに描く
   }
 
   // ============================================================
@@ -131,7 +308,7 @@ export class App implements GameView {
   async playEvents(events: GameEvent[], state: GameState): Promise<void> {
     let prev: GameEvent | undefined;
     for (const e of events) {
-      const sound = soundForEvent(e, prev, HUMAN);
+      const sound = soundForEvent(e, prev, this.me);
       if (sound) play(sound);
       prev = e;
       const text = describeEvent(e, state);
@@ -151,11 +328,35 @@ export class App implements GameView {
   }
 
   render(state: GameState): void {
+    if (!this.session) return;
+    // 時間切れなどで操作できなくなったら、カードの説明画面は閉じる
+    if (this.modalKind === 'card' && this.myLegal().length === 0) this.hideModal();
     this.renderPlayers(state);
     this.renderHand(state);
     this.renderActions(state);
     this.renderPrompt(state);
+    this.renderClock();
     this.fitBoard();
+  }
+
+  /** 制限時間の表示 */
+  private renderClock(): void {
+    const box = $('#clock');
+    const clock = this.session?.clock;
+    const s = this.session?.state;
+    if (!clock || !s || s.phase === 'gameOver') {
+      box.classList.add('hidden');
+      for (const p of document.querySelectorAll('.prompt-clock')) p.textContent = '';
+      return;
+    }
+    const sec = Math.max(0, Math.ceil((clock.deadline - performance.now()) / 1000));
+    const who = clock.player === this.me ? 'あなた' : s.players[clock.player].name;
+    const what = clock.kind === 'counter' ? 'カウンターの確認' : '';
+    box.textContent = `⏱ ${who}${what ? `の${what}` : ''} 残り${sec}秒`;
+    box.classList.remove('hidden');
+    box.classList.toggle('urgent', sec <= 10 && clock.player === this.me);
+    // 確認画面を開いている間も見えるように
+    for (const p of document.querySelectorAll('.prompt-clock')) p.textContent = clock.player === this.me ? `残り${sec}秒` : '';
   }
 
   private fitBoard(): void {
@@ -257,17 +458,20 @@ export class App implements GameView {
         box.removeEventListener('click', done);
         resolve();
       };
-      const timer = setTimeout(done, e.player === HUMAN ? CARD_SHOW_MS.human : CARD_SHOW_MS.cpu);
+      const timer = setTimeout(done, e.player === this.me ? CARD_SHOW_MS.human : CARD_SHOW_MS.cpu);
       box.addEventListener('click', done);
     });
     box.classList.add('hidden');
   }
 
   private renderPlayers(s: GameState): void {
+    const seats = this.session?.seats ?? [];
     const chips = s.players.map((p) => {
-      const chip = el('div', { class: `chip ${p.index === s.current ? 'current' : ''}`, style: `--pc:${PLAYER_COLORS[p.index]}` }, [
+      const away = seats[p.index]?.kind === 'human' && !seats[p.index].connected;
+      const chip = el('div', { class: `chip ${p.index === s.current ? 'current' : ''} ${away ? 'away' : ''}`, style: `--pc:${PLAYER_COLORS[p.index]}` }, [
         face(p.index, 'chip-icon'),
         el('span', { class: 'chip-name', text: p.name }),
+        ...(away ? [el('span', { class: 'chip-away', text: '切断中' })] : []),
         el('span', { class: 'chip-info' }, [
           ...(p.statuses.rest ? [img(ASSET.statusRest, '💤', 'chip-status')] : []),
           ...(p.statuses.frost ? [img(ASSET.statusFrost, '❄️', 'chip-status')] : []),
@@ -321,7 +525,7 @@ export class App implements GameView {
   }
 
   private renderHand(s: GameState): void {
-    const me = s.players[HUMAN];
+    const me = s.players[this.me];
     const playable = new Set(this.myLegal(s).filter((a) => a.type === 'playCard').map((a) => (a as { uid: number }).uid));
     const cards = me.hand.map((c) => {
       const node = this.cardElement(c, playable.has(c.uid) ? 'playable' : '');
@@ -334,21 +538,20 @@ export class App implements GameView {
 
   private renderActions(s: GameState): void {
     const box = $('#actions');
-    const game = this.game!;
     if (s.phase === 'gameOver') {
       box.replaceChildren();
       return;
     }
-    if (!game.waitingForHuman || s.pending) {
+    const legal = this.myLegal(s);
+    if (legal.length === 0 || s.pending) {
       const actor = expectedActor(s);
       const who = actor === null ? '' : `${s.players[actor].name}が考え中…`;
-      box.replaceChildren(el('div', { class: 'waiting', text: actor === HUMAN ? '' : who }));
+      box.replaceChildren(el('div', { class: 'waiting', text: actor === this.me ? '' : who }));
       return;
     }
 
-    const legal = this.myLegal(s);
     const buttons: HTMLElement[] = [];
-    const me = s.players[HUMAN];
+    const me = s.players[this.me];
     for (const a of legal) {
       if (a.type === 'roll') {
         const hint = isAtGate(s, me) ? this.gateHint(s) : '';
@@ -371,7 +574,7 @@ export class App implements GameView {
   }
 
   private gateHint(s: GameState): string {
-    const me = s.players[HUMAN];
+    const me = s.players[this.me];
     const node = s.board.nodes.find((n) => n.id === me.trail[me.trail.length - 1])!;
     if (s.turn.gateBroken) return '封印が砕けている！ 今回は必ず通れる';
     const cracks = me.gateCracks[node.id] ?? 0;
@@ -416,7 +619,7 @@ export class App implements GameView {
       const give = giveUids.includes(this.selection[0]) ? this.selection[0] : undefined;
       body.push(
         el('p', { class: 'card-sub', text: '渡すカードを選んでください' }),
-        el('div', { class: 'card-row' }, s.players[HUMAN].hand.filter((h) => giveUids.includes(h.uid)).map((h) => {
+        el('div', { class: 'card-row' }, s.players[this.me].hand.filter((h) => giveUids.includes(h.uid)).map((h) => {
           const node = this.cardElement(h, give === h.uid ? 'selected' : '');
           node.addEventListener('click', () => {
             this.selection = [h.uid];
@@ -456,7 +659,7 @@ export class App implements GameView {
       this.selection = [];
       this.hideModal();
     }));
-    this.showModal(body);
+    this.showModal(body, 'card');
   }
 
   // ============================================================
@@ -465,12 +668,16 @@ export class App implements GameView {
 
   private renderPrompt(s: GameState): void {
     if (s.phase === 'gameOver') {
-      if (!this.game!.isBusy) this.showResult(s);
+      if (!this.session!.busy) this.showResult(s);
       return;
     }
     const pd = s.pending;
-    if (!pd || !this.game!.waitingForHuman) return;
-    const me = s.players[HUMAN];
+    if (!pd || this.myLegal().length === 0) {
+      // 時間切れなどで、答える前に先へ進んだ
+      if (this.modalKind === 'prompt') this.hideModal();
+      return;
+    }
+    const me = s.players[this.me];
 
     if (pd.kind === 'counter') {
       const title =
@@ -478,7 +685,7 @@ export class App implements GameView {
           ? `${pd.effect.kind === 'trap' && pd.effect.trap === 'ice' ? '氷' : '炎'}の罠を踏んだ！`
           : `${s.players[pd.attacker].name}の「${getCardDef(pd.cardId).name}」！`;
       const counters = this.myLegal(s).filter((a): a is Extract<Action, { type: 'counter' }> => a.type === 'counter');
-      this.showModal([
+      this.showPrompt([
         el('h2', { text: title }),
         el('p', { text: 'カウンターしますか？' }),
         el('div', { class: 'choices' }, [
@@ -486,7 +693,7 @@ export class App implements GameView {
             const name = getCardDef(me.hand.find((h) => h.uid === a.uid)!.cardId).name;
             return button(`「${name}」を使う`, () => this.actFromModal(a), 'primary');
           }),
-          button('使わない', () => this.actFromModal({ type: 'noCounter', player: HUMAN })),
+          button('使わない', () => this.actFromModal({ type: 'noCounter', player: this.me })),
         ]),
       ]);
       return;
@@ -510,15 +717,15 @@ export class App implements GameView {
         });
         return node;
       }));
-      const ok = button('交換する', () => this.actFromModal({ type: 'exchange', player: HUMAN, offerUid: offerSel, handUid: handSel }), 'primary');
+      const ok = button('交換する', () => this.actFromModal({ type: 'exchange', player: this.me, offerUid: offerSel, handUid: handSel }), 'primary');
       ok.disabled = offerSel === undefined || handSel === undefined;
-      this.showModal([
+      this.showPrompt([
         el('h2', { text: 'カード交換' }),
         el('p', { text: 'もらうカード' }),
         offerRow,
         el('p', { text: '渡すカード' }),
         handRow,
-        el('div', { class: 'choices' }, [ok, button('交換しない', () => this.actFromModal({ type: 'declineExchange', player: HUMAN }))]),
+        el('div', { class: 'choices' }, [ok, button('交換しない', () => this.actFromModal({ type: 'declineExchange', player: this.me }))]),
       ]);
       return;
     }
@@ -534,9 +741,9 @@ export class App implements GameView {
         });
         return node;
       }));
-      const ok = button('捨てる', () => this.actFromModal({ type: 'discard', player: HUMAN, uids: this.selection }), 'primary');
+      const ok = button('捨てる', () => this.actFromModal({ type: 'discard', player: this.me, uids: this.selection }), 'primary');
       ok.disabled = this.selection.length !== pd.count;
-      this.showModal([
+      this.showPrompt([
         el('h2', { text: '手札が多すぎます' }),
         el('p', { text: `${pd.count}枚選んで捨ててください` }),
         row,
@@ -547,11 +754,20 @@ export class App implements GameView {
 
   private showResult(s: GameState): void {
     const r = s.result!;
+    if (this.modalKind === 'result') return;
     const order = [...s.players].sort((a, b) => r.ranks[a.index] - r.ranks[b.index]);
-    const human = s.players[HUMAN];
+    const session = this.session!;
+    const host = session instanceof HostSession ? session : null;
+    const online = !host || host.code !== null;
     playBgm('result');
+    const choices = host
+      ? [
+          button('もう一度', () => void host.startGame(session.seats.filter((x) => x.kind === 'cpu').length), 'primary'),
+          button(online ? '部屋を閉じてタイトルへ' : 'タイトルへ', () => this.leave()),
+        ]
+      : [el('p', { class: 'note', text: 'ホストが「もう一度」を押すと、次のゲームが始まります' }), button('部屋を出る', () => this.leave())];
     this.showModal([
-      el('h2', { text: r.winner === HUMAN ? '🎉 1位でゴール！' : `${s.players[r.winner].name}がゴール！` }),
+      el('h2', { text: r.winner === this.me ? '🎉 1位でゴール！' : `${s.players[r.winner].name}がゴール！` }),
       el('ol', { class: 'ranking' }, order.map((p) =>
         el('li', {}, [
           el('span', { class: 'rank', text: `${r.ranks[p.index]}位` }),
@@ -560,29 +776,16 @@ export class App implements GameView {
           el('span', { class: 'rest', text: p.index === r.winner ? 'ゴール' : `残り${distanceToGoal(s, p)}マス` }),
         ]),
       )),
-      el('div', { class: 'choices' }, [
-        button('もう一度', () => void this.startGame(human.name, s.players.length - 1), 'primary'),
-        button('タイトルへ', () => {
-          this.game?.stop();
-          this.hideModal();
-          $('#game').classList.add('hidden');
-          $('#title').classList.remove('hidden');
-          playBgm('title');
-        }),
-      ]),
-    ]);
+      el('div', { class: 'choices' }, choices),
+    ], 'result');
   }
 
   // ============================================================
   // 小さな道具
   // ============================================================
 
-  private myLegal(s: GameState): Action[] {
-    return this.game?.waitingForHuman ? getLegalActions(s, HUMAN) : [];
-  }
-
   private act(a: Action): void {
-    void this.game?.act(a);
+    this.session?.act(a);
   }
 
   private actFromModal(a: Action): void {
@@ -591,12 +794,20 @@ export class App implements GameView {
     this.act(a);
   }
 
-  private showModal(children: HTMLElement[]): void {
+  private showModal(children: HTMLElement[], kind: NonNullable<App['modalKind']>): void {
     $('#modal-body').replaceChildren(...children);
     $('#modal').classList.remove('hidden');
+    this.modalKind = kind;
+  }
+
+  /** 操作を求める確認画面（カウンター・交換・捨てる）。制限時間も一緒に見せる */
+  private showPrompt(children: HTMLElement[]): void {
+    this.showModal([...children, el('div', { class: 'prompt-clock', text: '' })], 'prompt');
+    this.renderClock();
   }
 
   private hideModal(): void {
     $('#modal').classList.add('hidden');
+    this.modalKind = null;
   }
 }

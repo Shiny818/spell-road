@@ -18,12 +18,39 @@
             <span>なまえ</span>
             <input id="player-name" type="text" maxlength="8" value="あなた" />
           </label>
-          <div class="field">
-            <span>CPUの人数</span>
-            <div id="cpu-count" class="segmented"></div>
+
+          <div class="title-section">
+            <div class="section-label">ひとりで遊ぶ</div>
+            <div class="field">
+              <span>CPUの人数</span>
+              <div id="cpu-count" class="segmented"></div>
+            </div>
+            <button id="start" class="btn primary big">CPUと対戦</button>
           </div>
-          <button id="start" class="btn primary big">CPUと対戦</button>
-          <p class="note">通信対戦は準備中です</p>
+
+          <div class="title-section">
+            <div class="section-label">みんなで遊ぶ（同じWi-Fiで）</div>
+            <button id="create-room" class="btn primary">部屋を作る</button>
+            <div class="join-row">
+              <input id="room-code" type="text" maxlength="7" placeholder="部屋コード" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+              <button id="join-room" class="btn">入る</button>
+            </div>
+          </div>
+          <p id="title-message" class="note"></p>
+        </div>
+      </section>
+
+      <section id="lobby" class="screen hidden">
+        <div class="lobby-panel">
+          <h2>待合室</h2>
+          <div class="lobby-code-box">
+            <div class="note">部屋コード</div>
+            <div id="lobby-code"></div>
+            <div class="note">同じWi-Fiにつないだ人に、このコードを伝えてください</div>
+          </div>
+          <ol id="lobby-seats"></ol>
+          <div id="lobby-controls"></div>
+          <button id="lobby-leave" class="btn">部屋を出る</button>
         </div>
       </section>
 
@@ -35,11 +62,13 @@
         <div id="panel">
           <div id="speaker"></div>
           <div id="message"></div>
+          <div id="clock" class="hidden"></div>
           <div id="hand"></div>
           <div id="actions"></div>
         </div>
       </section>
 
+      <div id="net-status" class="hidden"></div>
       <div id="dice" class="hidden"></div>
       <div id="cast" class="hidden"></div>
       <div id="modal" class="hidden"><div id="modal-body"></div></div>

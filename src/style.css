@@ -770,3 +770,173 @@ img.speaker-img {
 #title {
   position: relative;
 }
+
+/* ---- タイトル: ひとりで・みんなで ---- */
+
+.title-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding-top: 12px;
+  border-top: 2px dashed var(--line);
+}
+
+.section-label {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 18px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  text-align: center;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+#title-message:empty {
+  display: none;
+}
+
+#title-message.error {
+  color: #c0392b;
+}
+
+/* ---- 待合室 ---- */
+
+#lobby {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #cfe8c0 url('/assets/bg/title.png') center / cover no-repeat;
+}
+
+.lobby-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 340px;
+  padding: 18px 16px;
+  border-radius: 20px;
+  background: #fffaf2f0;
+  box-shadow: 0 4px 16px #0002;
+  text-align: center;
+}
+
+.lobby-panel h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+#lobby-code {
+  font-size: 40px;
+  font-weight: bold;
+  letter-spacing: 0.2em;
+  padding-left: 0.2em;
+  color: var(--primary);
+}
+
+#lobby-seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#lobby-seats li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  border-left: 6px solid var(--pc);
+  background: #fff;
+}
+
+.lobby-name {
+  font-weight: bold;
+}
+
+.lobby-tag {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--sub);
+}
+
+#lobby-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* ---- 通信対戦: 切断中・制限時間・通信の状態 ---- */
+
+.chip.away {
+  opacity: 0.55;
+}
+
+.chip-away {
+  font-size: 10px;
+  color: #c0392b;
+  white-space: nowrap;
+}
+
+#clock {
+  text-align: center;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--sub);
+  padding: 2px 0;
+}
+
+#clock.urgent {
+  color: #c0392b;
+}
+
+.prompt-clock {
+  font-size: 13px;
+  font-weight: bold;
+  color: #c0392b;
+  text-align: center;
+}
+
+.prompt-clock:empty {
+  display: none;
+}
+
+#net-status {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 8px 12px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  text-align: center;
+}

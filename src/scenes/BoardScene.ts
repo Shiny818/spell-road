@@ -38,6 +38,12 @@ export class BoardScene extends Phaser.Scene {
   private crackTexts = new Map<string, Phaser.GameObjects.Text>();
   private ready!: Promise<void>;
   private resolveReady!: () => void;
+  /**
+   * 画面が裏に回っているとPhaserが起動しないことがある（スマホで別のアプリを見ているときなど）。
+   * 起動前に届いた状態は覚えておき、起動したときに描く。それまでの演出は飛ばす
+   */
+  private created = false;
+  private pendingState: GameState | null = null;
   private worldW = 0;
   private worldH = 0;
 
@@ -71,11 +77,18 @@ export class BoardScene extends Phaser.Scene {
       cam.scrollY -= (p.y - p.prevPosition.y) / cam.zoom;
     });
     this.scale.on('resize', () => this.fitCamera());
+    this.created = true;
+    if (this.pendingState) this.setup(this.pendingState);
     this.resolveReady();
   }
 
   /** ボードとコマを描き直す */
   setup(state: GameState): void {
+    if (!this.created) {
+      this.pendingState = state;
+      return;
+    }
+    this.pendingState = null;
     this.children.removeAll(true);
     this.pieces = [];
     this.trapIcons.clear();
@@ -169,6 +182,7 @@ export class BoardScene extends Phaser.Scene {
 
   /** イベントに合わせてコマを動かす。動かすものがなければすぐ終わる */
   async animate(e: GameEvent): Promise<void> {
+    if (!this.created) return;
     switch (e.type) {
       case 'step':
         this.piecePos[e.player] = e.to;
@@ -191,6 +205,10 @@ export class BoardScene extends Phaser.Scene {
 
   /** 最終的な状態に合わせて全員のコマを置き直す（アニメーションのずれの補正） */
   placeAll(state: GameState): void {
+    if (!this.created) {
+      this.pendingState = state;
+      return;
+    }
     this.piecePos = state.players.map((p) => p.trail[p.trail.length - 1]);
     state.players.forEach((_, i) => {
       const [x, y] = this.pieceXY(i);

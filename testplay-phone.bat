@@ -25,8 +25,9 @@ netstat -ano | findstr ":5180 " | findstr "LISTENING" > nul
 if not errorlevel 1 (
   netstat -ano | findstr "0.0.0.0:5180 \[::\]:5180 " | findstr "LISTENING" > nul
   if errorlevel 1 (
-    echo PC用の testplay.bat で起動中のため、スマホからはつながりません。
-    echo そちらのウィンドウを閉じてから、もう一度このファイルを開いてください。
+    echo PCからだけつながる開発用サーバーが、すでに 5180 番で起動しています
+    echo （PC用の testplay.bat や、Claude の確認用のサーバーなど）。
+    echo そのままではスマホからつながらないので、それを閉じてから、もう一度このファイルを開いてください。
     pause
     exit /b 1
   )
