@@ -3,7 +3,7 @@
 // applyAction は元の状態を変更せず、新しい状態を返す。
 
 import { boardInfo, validateBoard } from './board';
-import { getCardDef, IMPLEMENTED_CARD_IDS, TARGET_ATTACKS, TRAP_BACK_STEPS } from './cards';
+import { ALL_ATTACKS, getCardDef, TARGET_ATTACKS, TRAP_BACK_STEPS, TRAP_CARD_OF, TRAP_CARDS } from './cards';
 import { nextRandom } from './rng';
 import type {
   Action,
@@ -14,6 +14,7 @@ import type {
   GameState,
   Pending,
   PlayerState,
+  QueuedAttack,
   Timing,
   TurnState,
 } from './types';
@@ -63,7 +64,7 @@ export function createGame(config: GameConfig): GameState {
       isCpu: p.isCpu,
       trail: [info.startId],
       hand: [],
-      statuses: { rest: false, frost: false },
+      statuses: { rest: false, frost: false, blizzard: false, sealed: false, protected: false },
       gateCracks: {},
       coins: 0,
     })),
@@ -77,6 +78,7 @@ export function createGame(config: GameConfig): GameState {
     deck: [],
     discard: [],
     traps: {},
+    attackQueue: [],
     rngState: config.seed >>> 0,
     nextUid: 1,
     forcedDice: [],
@@ -101,9 +103,12 @@ function newTurn(): TurnState {
     dice: [],
     value: null,
     frostPenalty: 0,
-    twoDice: false,
+    diceCount: 1,
     moveBonus: 0,
     gateBroken: false,
+    extraTurn: false,
+    isExtra: false,
+    keepSeal: false,
   };
 }
 
@@ -146,7 +151,8 @@ export function swapTargets(s: GameState, player: number): number[] {
   const nearest = Math.max(...ahead.map((o) => distanceToGoal(s, o)));
   const myGates = passedGates(s, me);
   return ahead
-    .filter((o) => distanceToGoal(s, o) === nearest)
+    // 加護で守られている人とは入れ替えられない
+    .filter((o) => distanceToGoal(s, o) === nearest && !o.statuses.protected)
     // 入れ替えると相手がチェックポイントより前に戻る場合は使えない
     .filter((o) => [...passedGates(s, o)].every((g) => myGates.has(g)))
     .map((o) => o.index);
@@ -158,7 +164,18 @@ export function canPlaceTrap(s: GameState, nodeId: string): boolean {
   return !['start', 'gate', 'goal'].includes(type) && !s.traps[nodeId];
 }
 
+/** このターン移動するマス数（吹雪なら半分） */
+export function plannedSteps(s: GameState): number {
+  const steps = s.turn.value! + s.turn.moveBonus;
+  return s.players[s.current].statuses.blizzard ? halve(steps) : steps;
+}
+
+function halve(steps: number): number {
+  return Math.max(1, Math.floor(steps / 2));
+}
+
 function hasCounter(p: PlayerState, source: 'card' | 'trap'): boolean {
+  if (p.statuses.sealed) return false;
   return p.hand.some((c) =>
     source === 'trap' ? c.cardId === 'hikari_no_kabe' : COUNTER_CARD_IDS.includes(c.cardId),
   );
@@ -215,13 +232,14 @@ function cardPlays(s: GameState, timing: Timing): Action[] {
   if (s.turn.cardUsed) return [];
   const player = s.current;
   const p = s.players[player];
+  if (p.statuses.sealed) return [];
   const atGate = isAtGate(s, p);
-  const opponents = s.players.filter((o) => o.index !== player).map((o) => o.index);
+  // 加護で守られている人は、攻撃の対象に選べない
+  const opponents = s.players.filter((o) => o.index !== player && !o.statuses.protected).map((o) => o.index);
   const actions: Action[] = [];
 
   for (const c of p.hand) {
     const def = getCardDef(c.cardId);
-    if (!IMPLEMENTED_CARD_IDS.has(c.cardId)) continue;
     if (!def.timings.includes(timing)) continue;
     if (atGate && !def.usableAtGate) continue;
     const base = { type: 'playCard', player, uid: c.uid } as const;
@@ -231,7 +249,23 @@ function cardPlays(s: GameState, timing: Timing): Action[] {
         for (const t of swapTargets(s, player)) actions.push({ ...base, target: t });
         break;
       case 'honoo_no_mahoujin':
+      case 'itetsuku_yuka':
         if (canPlaceTrap(s, currentNode(p))) actions.push(base);
+        break;
+      case 'yami_no_torihiki':
+        // choice は渡すカードの uid
+        for (const t of opponents) {
+          if (s.players[t].hand.length === 0) continue;
+          for (const give of p.hand) {
+            if (give.uid !== c.uid) actions.push({ ...base, target: t, choice: give.uid });
+          }
+        }
+        break;
+      case 'jouka':
+        if (p.statuses.frost || p.statuses.blizzard) actions.push(base);
+        break;
+      case 'tabi_no_kaze':
+        if (boardInfo(s.board).nodes.get(currentNode(p))!.next.length > 0) actions.push(base);
         break;
       case 'unmei_no_hari':
         actions.push({ ...base, choice: 1 });
@@ -243,6 +277,8 @@ function cardPlays(s: GameState, timing: Timing): Action[] {
       default:
         if (TARGET_ATTACKS[c.cardId]) {
           for (const t of opponents) actions.push({ ...base, target: t });
+        } else if (ALL_ATTACKS[c.cardId]) {
+          if (opponents.length > 0) actions.push(base);
         } else {
           actions.push(base);
         }
@@ -310,7 +346,7 @@ export function applyAction(prev: GameState, action: Action): GameState {
 
 function doRoll(s: GameState): void {
   const p = s.players[s.current];
-  const dice = Array.from({ length: s.turn.twoDice ? 2 : 1 }, () => rollDie(s));
+  const dice = Array.from({ length: s.turn.diceCount }, () => rollDie(s));
   s.turn.frostPenalty = p.statuses.frost ? 2 : 0;
   p.statuses.frost = false;
   setDice(s, dice);
@@ -337,15 +373,38 @@ function doPlayCard(s: GameState, player: number, uid: number, target?: number, 
       s.turn.moveBonus += 2;
       break;
     case 'shippu':
-      s.turn.twoDice = true;
+      s.turn.diceCount = 2;
+      break;
+    case 'daisenpu':
+      s.turn.diceCount = 3;
+      break;
+    case 'tabi_no_kaze':
+      startMove(s, 1, null);
+      break;
+    case 'baisoku':
+      changeValue(s, s.turn.value! * 2);
+      break;
+    case 'jikan_teishi':
+      s.turn.extraTurn = true;
       break;
     case 'shukufuku':
       draw(s, p, 2);
       break;
-    case 'honoo_no_mahoujin': {
+    case 'jouka':
+      p.statuses.frost = false;
+      p.statuses.blizzard = false;
+      log(s, { type: 'cleansed', player });
+      break;
+    case 'seinaru_kago':
+      p.statuses.protected = true;
+      log(s, { type: 'statusApplied', player, status: 'protected' });
+      break;
+    case 'honoo_no_mahoujin':
+    case 'itetsuku_yuka': {
       const node = currentNode(p);
-      s.traps[node] = { owner: player, kind: 'fire' };
-      log(s, { type: 'trapPlaced', player, node });
+      const kind = TRAP_CARDS[card.cardId];
+      s.traps[node] = { owner: player, kind };
+      log(s, { type: 'trapPlaced', player, node, kind });
       break;
     }
     case 'unmei_no_hari':
@@ -359,10 +418,18 @@ function doPlayCard(s: GameState, player: number, uid: number, target?: number, 
       changeValue(s, choice!);
       break;
     case 'tsumujikaze':
-      startAttack(s, player, target!, card.cardId, { kind: 'swap' }, 'card');
+      startAttack(s, player, [target!], card.cardId, { kind: 'swap' }, 'card');
+      break;
+    case 'yami_no_torihiki':
+      startAttack(s, player, [target!], card.cardId, { kind: 'trade', giveUid: choice! }, 'card');
       break;
     default:
-      startAttack(s, player, target!, card.cardId, TARGET_ATTACKS[card.cardId], 'card');
+      if (ALL_ATTACKS[card.cardId]) {
+        const others = s.players.filter((o) => o.index !== player).map((o) => o.index);
+        startAttack(s, player, others, card.cardId, ALL_ATTACKS[card.cardId], 'card');
+      } else {
+        startAttack(s, player, [target!], card.cardId, TARGET_ATTACKS[card.cardId], 'card');
+      }
   }
 }
 
@@ -373,48 +440,64 @@ function changeValue(s: GameState, value: number): void {
 
 // ---- 攻撃とカウンター ----
 
+/** 攻撃を始める。対象が複数なら1人ずつ、カウンターするかを確かめながら当てる */
 function startAttack(
   s: GameState,
   attacker: number,
-  target: number,
+  targets: number[],
   cardId: string,
   effect: AttackEffect,
   source: 'card' | 'trap',
 ): void {
-  if (hasCounter(s.players[target], source)) {
-    s.pending = { kind: 'counter', target, attacker, cardId, effect, source };
-    return;
+  s.attackQueue = targets.map((target) => ({ target, attacker, cardId, effect, source }));
+  resolveAttacks(s);
+}
+
+function resolveAttacks(s: GameState): void {
+  while (s.attackQueue.length > 0) {
+    const a = s.attackQueue.shift()!;
+    if (s.players[a.target].statuses.protected) {
+      log(s, { type: 'blocked', player: a.target, attacker: a.attacker });
+      continue;
+    }
+    if (hasCounter(s.players[a.target], a.source)) {
+      s.pending = { kind: 'counter', ...a };
+      return;
+    }
+    attackHits(s, a);
   }
-  attackHits(s, { kind: 'counter', target, attacker, cardId, effect, source });
 }
 
 function doCounter(s: GameState, uid: number | null): void {
-  const pd = s.pending as Extract<Pending, { kind: 'counter' }>;
+  const { kind: _kind, ...pd } = s.pending as Extract<Pending, { kind: 'counter' }>;
   s.pending = null;
   if (uid === null) {
     attackHits(s, pd);
-    return;
+  } else {
+    const t = s.players[pd.target];
+    const card = takeFromHand(t, uid);
+    s.discard.push(card);
+    const reflected = card.cardId === 'hansha_no_kagami';
+    log(s, { type: 'countered', player: pd.target, cardId: card.cardId, attacker: pd.attacker, reflected });
+    // はね返した攻撃に、さらにカウンターはできない。
+    // 入れ替え・取引は、はね返しても同じことになるので、無効にしたのと同じ扱い
+    if (reflected && pd.effect.kind !== 'swap' && pd.effect.kind !== 'trade') {
+      applyEffect(s, pd.attacker, pd.effect, pd.target);
+    }
+    if (pd.source === 'trap') continueMove(s);
   }
-
-  const t = s.players[pd.target];
-  const card = takeFromHand(t, uid);
-  s.discard.push(card);
-  const reflected = card.cardId === 'hansha_no_kagami';
-  log(s, { type: 'countered', player: pd.target, cardId: card.cardId, attacker: pd.attacker, reflected });
-  // はね返した攻撃に、さらにカウンターはできない。入れ替えははね返しても同じ結果なので無効化と同じ扱い
-  if (reflected && pd.effect.kind !== 'swap') applyEffect(s, pd.attacker, pd.effect, pd.target);
-
-  if (pd.source === 'trap') continueMove(s);
+  // 全員への攻撃なら、次の人へ
+  if (pd.source === 'card') resolveAttacks(s);
 }
 
-function attackHits(s: GameState, pd: Extract<Pending, { kind: 'counter' }>): void {
-  if (pd.source === 'trap') {
-    applyEffect(s, pd.target, pd.effect, pd.attacker);
+function attackHits(s: GameState, a: QueuedAttack): void {
+  applyEffect(s, a.target, a.effect, a.attacker);
+  if (a.source === 'trap') {
     s.moving = null;
-    enterTurnEnd(s);
-    return;
+    // 氷の罠はそのマスで止まるので、止まったマスの効果がある。炎の罠は戻されて終わり
+    if (a.effect.kind === 'trap' && a.effect.trap === 'ice') landOn(s, s.players[a.target]);
+    else enterTurnEnd(s);
   }
-  applyEffect(s, pd.target, pd.effect, pd.attacker);
 }
 
 function applyEffect(s: GameState, targetIndex: number, effect: AttackEffect, byIndex: number): void {
@@ -425,6 +508,33 @@ function applyEffect(s: GameState, targetIndex: number, effect: AttackEffect, by
     case 'trap':
       moveBack(s, t, effect.steps);
       break;
+    case 'blizzard':
+      t.statuses.blizzard = true;
+      log(s, { type: 'statusApplied', player: targetIndex, status: 'blizzard' });
+      break;
+    case 'seal':
+      t.statuses.sealed = true;
+      // 自分のターン中に（はね返されて）封印を受けたら、次の自分のターンの終わりまで続く
+      if (targetIndex === s.current) s.turn.keepSeal = true;
+      log(s, { type: 'statusApplied', player: targetIndex, status: 'sealed' });
+      break;
+    case 'forget':
+      if (t.hand.length > 0) {
+        const [card] = t.hand.splice(Math.floor(random(s) * t.hand.length), 1);
+        s.discard.push(card);
+        log(s, { type: 'forgotten', player: targetIndex });
+      }
+      break;
+    case 'trade': {
+      const gi = by.hand.findIndex((c) => c.uid === effect.giveUid);
+      if (gi < 0 || t.hand.length === 0) break;
+      const [got] = t.hand.splice(Math.floor(random(s) * t.hand.length), 1);
+      const [give] = by.hand.splice(gi, 1);
+      t.hand.push(give);
+      by.hand.push(got);
+      log(s, { type: 'traded', from: byIndex, to: targetIndex });
+      break;
+    }
     case 'frost':
       t.statuses.frost = true;
       log(s, { type: 'statusApplied', player: targetIndex, status: 'frost' });
@@ -470,7 +580,12 @@ function doConfirmMove(s: GameState): void {
   const p = s.players[s.current];
   const value = s.turn.value!;
   if (!isAtGate(s, p)) {
-    startMove(s, value + s.turn.moveBonus, null);
+    const steps = plannedSteps(s);
+    if (p.statuses.blizzard) {
+      p.statuses.blizzard = false;
+      log(s, { type: 'slowed', player: p.index, steps });
+    }
+    startMove(s, steps, null);
     return;
   }
 
@@ -481,6 +596,8 @@ function doConfirmMove(s: GameState): void {
     // 出目に合う分岐先。なければ最初のルート（封印が砕けたときの通常ルート）
     const edge = gate.next.find((e) => e.dice?.includes(v)) ?? gate.next[0];
     delete p.gateCracks[gateId];
+    // 関所を抜けるのも移動なので、吹雪はここで解ける（1マスの半分は1マス）
+    p.statuses.blizzard = false;
     log(s, { type: 'gatePass', player: p.index, gate: gateId, to: edge.to });
     startMove(s, 1, edge.to);
     return;
@@ -527,10 +644,12 @@ function continueMove(s: GameState): void {
       break;
     }
     const trap = s.traps[nextId];
-    if (trap) {
+    // 加護で守られている人は、罠の上をそのまま通り抜ける（罠は残る）
+    if (trap && !p.statuses.protected) {
       delete s.traps[nextId];
-      log(s, { type: 'trapTriggered', player: p.index, node: nextId, owner: trap.owner });
-      startAttack(s, trap.owner, p.index, 'honoo_no_mahoujin', { kind: 'trap', steps: TRAP_BACK_STEPS }, 'trap');
+      log(s, { type: 'trapTriggered', player: p.index, node: nextId, owner: trap.owner, kind: trap.kind });
+      const steps = trap.kind === 'fire' ? TRAP_BACK_STEPS : 0;
+      startAttack(s, trap.owner, [p.index], TRAP_CARD_OF[trap.kind], { kind: 'trap', trap: trap.kind, steps }, 'trap');
       // カウンターの確認待ち、または罠で戻されて移動終了
       if (s.pending || !s.moving) return;
     }
@@ -614,20 +733,38 @@ function doDiscard(s: GameState, player: number, uids: number[]): void {
 
 function advanceTurn(s: GameState): void {
   const n = s.players.length;
-  for (;;) {
-    s.current = (s.current + 1) % n;
-    if (s.current === 0) s.round++;
+  const ended = s.players[s.current];
+  // 封印は「次の自分のターンが終わるまで」
+  if (ended.statuses.sealed && !s.turn.keepSeal) ended.statuses.sealed = false;
+  const extra = s.turn.extraTurn;
+
+  if (extra) {
+    // 時間停止: 同じ人がもう一度
     s.turnCount++;
-    const p = s.players[s.current];
-    if (!p.statuses.rest) break;
-    p.statuses.rest = false;
-    log(s, { type: 'skipTurn', player: p.index });
+  } else {
+    for (;;) {
+      s.current = (s.current + 1) % n;
+      if (s.current === 0) s.round++;
+      s.turnCount++;
+      const p = s.players[s.current];
+      if (!p.statuses.rest) break;
+      p.statuses.rest = false;
+      // 飛ばしたターンも自分のターンなので、封印と加護はここで解ける
+      p.statuses.sealed = false;
+      p.statuses.protected = false;
+      log(s, { type: 'skipTurn', player: p.index });
+    }
   }
 
   const p = s.players[s.current];
+  p.statuses.protected = false;
   s.turn = newTurn();
+  if (extra) {
+    s.turn.isExtra = true;
+    s.turn.cardUsed = true; // 追加のターンではカードを使えない
+  }
   s.phase = 'turnStart';
-  log(s, { type: 'turnStart', player: p.index, round: s.round });
+  log(s, { type: 'turnStart', player: p.index, round: s.round, ...(extra ? { extra: true } : {}) });
   if (isAtGate(s, p) && (p.gateCracks[currentNode(p)] ?? 0) >= GATE_CRACK_LIMIT) {
     s.turn.gateBroken = true;
     log(s, { type: 'gateBroken', player: p.index, gate: currentNode(p) });

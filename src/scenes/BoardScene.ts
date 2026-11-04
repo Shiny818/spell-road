@@ -56,6 +56,7 @@ export class BoardScene extends Phaser.Scene {
     for (const t of ICON_SQUARES) this.load.image(`square_${t}`, ASSET.square(t));
     this.load.image('square_base', ASSET.squareBase);
     this.load.image('trap_fire', ASSET.trapFire);
+    this.load.image('trap_ice', ASSET.trapIce);
     this.load.image('bg_forest', ASSET.forestTile);
   }
 
@@ -152,9 +153,10 @@ export class BoardScene extends Phaser.Scene {
     for (const id of Object.keys(state.traps)) {
       if (this.trapIcons.has(id)) continue;
       const [x, y] = this.nodeXY(id);
-      const icon = this.textures.exists('trap_fire')
-        ? this.add.image(x, y + 4, 'trap_fire').setDisplaySize(RADIUS * 2.6, RADIUS * 2.6) // 地面に描かれた魔法陣なので、マス全体に重ねる
-        : this.addText(x + 27, y - 33, '🔥', { fontSize: '30px' });
+      const key = `trap_${state.traps[id].kind}`;
+      const icon = this.textures.exists(key)
+        ? this.add.image(x, y + 4, key).setDisplaySize(RADIUS * 2.6, RADIUS * 2.6) // 地面に描かれた魔法陣なので、マス全体に重ねる
+        : this.addText(x + 27, y - 33, state.traps[id].kind === 'ice' ? '🧊' : '🔥', { fontSize: '30px' });
       this.trapIcons.set(id, icon.setOrigin(0.5).setDepth(5));
     }
     for (const [gate, text] of this.crackTexts) {
@@ -242,7 +244,7 @@ export class BoardScene extends Phaser.Scene {
    * 大きな画像をそのまま小さく描くとギザギザになるため、半分ずつ縮めてなめらかにする。
    */
   private shrinkTextures(): void {
-    const keys = [...Array.from({ length: 4 }, (_, i) => `chara${i}`), ...ICON_SQUARES.map((t) => `square_${t}`), 'square_base', 'trap_fire'];
+    const keys = [...Array.from({ length: 4 }, (_, i) => `chara${i}`), ...ICON_SQUARES.map((t) => `square_${t}`), 'square_base', 'trap_fire', 'trap_ice'];
     for (const key of keys) {
       if (!this.textures.exists(key)) continue;
       const src = this.textures.get(key).getSourceImage() as HTMLImageElement;

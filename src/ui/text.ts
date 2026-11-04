@@ -1,7 +1,15 @@
 // イベントを画面に出す文章にする
 
 import { getCardDef } from '../core/cards';
-import type { GameEvent, GameState } from '../core/types';
+import type { GameEvent, GameState, Statuses } from '../core/types';
+
+const STATUS_TEXT: Record<keyof Statuses, (who: string) => string> = {
+  rest: (who) => `${who}は凍りついた（次のターンは休み）`,
+  frost: (who) => `${who}に霜の呪い（次の出目-2）`,
+  blizzard: (who) => `${who}に吹雪（次に進むマスが半分）`,
+  sealed: (who) => `${who}は封印された（次のターンの終わりまでカードを使えない）`,
+  protected: (who) => `${who}は聖なる加護に包まれた（次のターンまで攻撃を受けない）`,
+};
 
 export function describeEvent(e: GameEvent, s: GameState): string | null {
   const name = (i: number) => s.players[i].name;
@@ -9,7 +17,7 @@ export function describeEvent(e: GameEvent, s: GameState): string | null {
 
   switch (e.type) {
     case 'turnStart':
-      return `${name(e.player)}のターン`;
+      return e.extra ? `時間が止まった！ ${name(e.player)}がもう一度動く` : `${name(e.player)}のターン`;
     case 'skipTurn':
       return `${name(e.player)}は凍りついて動けない（1回休み）`;
     case 'roll': {
@@ -31,17 +39,25 @@ export function describeEvent(e: GameEvent, s: GameState): string | null {
     case 'gatePass':
       return `${name(e.player)}は関所を通過した！`;
     case 'trapPlaced':
-      return `${name(e.player)}が炎の罠を置いた`;
+      return `${name(e.player)}が${e.kind === 'ice' ? '氷' : '炎'}の罠を置いた`;
     case 'trapTriggered':
-      return `${name(e.player)}が罠を踏んだ！`;
+      return e.kind === 'ice' ? `${name(e.player)}が氷の罠を踏んだ！ 足が凍りついた` : `${name(e.player)}が炎の罠を踏んだ！`;
     case 'countered':
       return e.reflected
         ? `${name(e.player)}は${card(e.cardId)}ではね返した！`
         : `${name(e.player)}は${card(e.cardId)}で防いだ！`;
     case 'statusApplied':
-      return e.status === 'rest'
-        ? `${name(e.player)}は凍りついた（次のターンは休み）`
-        : `${name(e.player)}に霜の呪い（次の出目-2）`;
+      return STATUS_TEXT[e.status](name(e.player));
+    case 'cleansed':
+      return `${name(e.player)}の悪い状態が消えた`;
+    case 'blocked':
+      return `${name(e.player)}は聖なる加護で守られている！`;
+    case 'slowed':
+      return `吹雪で足が重い…（${e.steps}マスだけ進む）`;
+    case 'forgotten':
+      return `${name(e.player)}はカードを1枚忘れてしまった`;
+    case 'traded':
+      return `${name(e.from)}と${name(e.to)}がカードを取り引きした`;
     case 'swapped':
       return `${name(e.a)}と${name(e.b)}の位置が入れ替わった`;
     case 'stolen':

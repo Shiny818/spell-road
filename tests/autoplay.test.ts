@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { autoplay, randomChooser } from '../src/ai/autoplay';
 import { setup } from './helpers';
-import { buildSharedDeck, MVP_CARD_IDS } from '../src/core/cards';
+import { ALL_CARD_IDS, buildSharedDeck } from '../src/core/cards';
 import { createGame } from '../src/core/engine';
 import { FOREST } from './helpers';
 
@@ -9,7 +9,7 @@ function newGame(players: number, seed: number) {
   return createGame({
     board: FOREST,
     players: Array.from({ length: players }, (_, i) => ({ name: `CPU${i}`, isCpu: true })),
-    deck: buildSharedDeck(MVP_CARD_IDS),
+    deck: buildSharedDeck(ALL_CARD_IDS),
     seed,
   });
 }

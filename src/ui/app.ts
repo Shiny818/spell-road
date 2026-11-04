@@ -2,13 +2,13 @@
 
 import Phaser from 'phaser';
 import forest from '../data/boards/forest.json';
-import { buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../core/cards';
-import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate } from '../core/engine';
+import { ALL_ATTACKS, ALL_CARD_IDS, buildSharedDeck, getCardDef } from '../core/cards';
+import { createGame, distanceToGoal, expectedActor, getLegalActions, isAtGate, plannedSteps } from '../core/engine';
 import type { Action, BoardDef, CardInstance, GameEvent, GameState } from '../core/types';
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
 import { ASSET, img, imgChain } from './assets';
 import { moodByEvent, moodByRank, type Expression } from './expression';
-import { isSoundOn, onSoundChange, play, setSound, soundForEvent, unlock } from './sound';
+import { isSoundOn, onSoundChange, play, playBgm, setSound, soundForEvent, unlock } from './sound';
 import { LocalGame, type GameView } from './LocalGame';
 import { describeEvent } from './text';
 import { ATTRIBUTE_STYLE, PLAYER_COLORS, PLAYER_ICONS, TIMING_LABEL } from './theme';
@@ -59,6 +59,7 @@ export class App implements GameView {
 
   init(): void {
     this.initSound();
+    playBgm('title');
     let cpuCount = 3;
     const counts = $('#cpu-count');
     for (const n of [1, 2, 3]) {
@@ -78,6 +79,7 @@ export class App implements GameView {
   private async startGame(name: string, cpuCount: number): Promise<void> {
     $('#title').classList.add('hidden');
     $('#game').classList.remove('hidden');
+    playBgm('forest');
     this.hideModal();
     this.game?.stop();
     this.messages = [];
@@ -113,7 +115,7 @@ export class App implements GameView {
         { name, isCpu: false },
         ...CPU_NAMES.slice(0, cpuCount).map((n) => ({ name: n, isCpu: true })),
       ],
-      deck: buildSharedDeck(MVP_CARD_IDS),
+      deck: buildSharedDeck(ALL_CARD_IDS),
       seed: Math.floor(Math.random() * 2 ** 31),
     });
     this.scene.setup(state);
@@ -235,6 +237,7 @@ export class App implements GameView {
   private async showCardUse(e: Extract<GameEvent, { type: 'cardPlayed' | 'countered' }>, s: GameState): Promise<void> {
     let result: (HTMLElement | string)[] = [];
     if (e.type === 'cardPlayed' && e.target !== undefined) result = ['→ ', face(e.target), `${s.players[e.target].name}に`];
+    if (e.type === 'cardPlayed' && ALL_ATTACKS[e.cardId]) result = ['→ 自分以外の全員に'];
     if (e.type === 'countered') result = [`${s.players[e.attacker].name}の攻撃を${e.reflected ? 'はね返した！' : '防いだ！'}`];
 
     const box = $('#cast');
@@ -268,6 +271,9 @@ export class App implements GameView {
         el('span', { class: 'chip-info' }, [
           ...(p.statuses.rest ? [img(ASSET.statusRest, '💤', 'chip-status')] : []),
           ...(p.statuses.frost ? [img(ASSET.statusFrost, '❄️', 'chip-status')] : []),
+          ...(p.statuses.blizzard ? [img(ASSET.statusBlizzard, '🌨️', 'chip-status')] : []),
+          ...(p.statuses.sealed ? [img(ASSET.statusSeal, '🔒', 'chip-status')] : []),
+          ...(p.statuses.protected ? [img(ASSET.statusGuard, '✨', 'chip-status')] : []),
           img(ASSET.cardBack, '🃏', 'chip-card'),
           `${p.hand.length} 残り${distanceToGoal(s, p)}`,
         ]),
@@ -351,7 +357,7 @@ export class App implements GameView {
       }
       if (a.type === 'confirmMove') {
         const v = s.turn.value!;
-        const label = isAtGate(s, me) ? `出目 ${v} で関所に挑む` : `${v + s.turn.moveBonus}マス進む`;
+        const label = isAtGate(s, me) ? `出目 ${v} で関所に挑む` : `${plannedSteps(s)}マス進む${me.statuses.blizzard ? '（吹雪で半分）' : ''}`;
         if (isAtGate(s, me)) buttons.push(el('div', { class: 'hint', text: this.gateHint(s) }));
         buttons.push(button(label, () => this.act(a), 'primary'));
       }
@@ -359,6 +365,8 @@ export class App implements GameView {
     }
     const canPlay = legal.some((a) => a.type === 'playCard');
     if (canPlay) buttons.push(el('div', { class: 'hint', text: '光っているカードを使えます' }));
+    else if (s.turn.isExtra) buttons.push(el('div', { class: 'hint', text: '時間停止の追加ターン（カードは使えない）' }));
+    else if (me.statuses.sealed && me.hand.length > 0) buttons.push(el('div', { class: 'hint', text: '封印されていて、カードを使えない' }));
     box.replaceChildren(...buttons);
   }
 
@@ -401,7 +409,26 @@ export class App implements GameView {
       el('p', { class: 'card-sub', text: `使えるとき: ${def.timings.map((t) => TIMING_LABEL[t]).join('・')}${def.usableAtGate ? '' : '（関所では使えない）'}` }),
     ];
     const choices = el('div', { class: 'choices' });
-    for (const v of variants) {
+    // 闇の取引は、先に渡すカードを選んでから相手を選ぶ
+    let shown = variants;
+    if (c.cardId === 'yami_no_torihiki' && variants.length > 0) {
+      const giveUids = [...new Set(variants.map((v) => v.choice!))];
+      const give = giveUids.includes(this.selection[0]) ? this.selection[0] : undefined;
+      body.push(
+        el('p', { class: 'card-sub', text: '渡すカードを選んでください' }),
+        el('div', { class: 'card-row' }, s.players[HUMAN].hand.filter((h) => giveUids.includes(h.uid)).map((h) => {
+          const node = this.cardElement(h, give === h.uid ? 'selected' : '');
+          node.addEventListener('click', () => {
+            this.selection = [h.uid];
+            this.openCard(s, c);
+          });
+          return node;
+        })),
+      );
+      shown = give === undefined ? [] : variants.filter((v) => v.choice === give);
+      if (give === undefined) choices.append(el('p', { class: 'card-sub', text: 'カードを選ぶと、相手を選べます' }));
+    }
+    for (const v of shown) {
       let label = '使う';
       let content: (HTMLElement | string)[] | null = null;
       if (v.target !== undefined) {
@@ -415,16 +442,20 @@ export class App implements GameView {
           ]),
         ];
       }
-      if (v.choice !== undefined) label = c.cardId === 'unmei_no_hari' ? `出目を${v.choice > 0 ? '+1' : '-1'}（→ ${Math.max(1, s.turn.value! + v.choice)}）` : `出目を ${v.choice} にする`;
+      if (v.choice !== undefined && c.cardId !== 'yami_no_torihiki') label = c.cardId === 'unmei_no_hari' ? `出目を${v.choice > 0 ? '+1' : '-1'}（→ ${Math.max(1, s.turn.value! + v.choice)}）` : `出目を ${v.choice} にする`;
       choices.append(
         button(content ?? label, () => {
+          this.selection = [];
           this.hideModal();
           this.act(v);
         }, 'primary'),
       );
     }
     if (variants.length === 0) body.push(el('p', { class: 'card-sub', text: '今は使えません' }));
-    body.push(choices, button('閉じる', () => this.hideModal()));
+    body.push(choices, button('閉じる', () => {
+      this.selection = [];
+      this.hideModal();
+    }));
     this.showModal(body);
   }
 
@@ -444,7 +475,7 @@ export class App implements GameView {
     if (pd.kind === 'counter') {
       const title =
         pd.source === 'trap'
-          ? '炎の罠を踏んだ！'
+          ? `${pd.effect.kind === 'trap' && pd.effect.trap === 'ice' ? '氷' : '炎'}の罠を踏んだ！`
           : `${s.players[pd.attacker].name}の「${getCardDef(pd.cardId).name}」！`;
       const counters = this.myLegal(s).filter((a): a is Extract<Action, { type: 'counter' }> => a.type === 'counter');
       this.showModal([
@@ -518,6 +549,7 @@ export class App implements GameView {
     const r = s.result!;
     const order = [...s.players].sort((a, b) => r.ranks[a.index] - r.ranks[b.index]);
     const human = s.players[HUMAN];
+    playBgm('result');
     this.showModal([
       el('h2', { text: r.winner === HUMAN ? '🎉 1位でゴール！' : `${s.players[r.winner].name}がゴール！` }),
       el('ol', { class: 'ranking' }, order.map((p) =>
@@ -535,6 +567,7 @@ export class App implements GameView {
           this.hideModal();
           $('#game').classList.add('hidden');
           $('#title').classList.remove('hidden');
+          playBgm('title');
         }),
       ]),
     ]);

@@ -14,7 +14,7 @@ describe('効果音', () => {
   });
 
   it('罠で戻されたときは、罠の音だけを鳴らす', () => {
-    const trap = { type: 'trapTriggered', player: 0, node: 'a3', owner: 1 } as const;
+    const trap = { type: 'trapTriggered', player: 0, node: 'a3', owner: 1, kind: 'fire' } as const;
     const back = { type: 'pushedBack', player: 0, to: 'a1', steps: 2 } as const;
     expect(soundForEvent(trap, undefined, 0)).toBe('trap');
     expect(soundForEvent(back, trap, 0)).toBeNull();

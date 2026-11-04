@@ -1,5 +1,5 @@
 import cardsJson from '../data/cards.json';
-import type { AttackEffect, CardDef } from './types';
+import type { AttackEffect, CardDef, TrapKind } from './types';
 
 export const CARD_DEFS = cardsJson as CardDef[];
 
@@ -11,32 +11,33 @@ export function getCardDef(id: string): CardDef {
   return def;
 }
 
-/** ルールエンジンが効果を実装済みのカード */
-export const IMPLEMENTED_CARD_IDS = new Set([
-  'oikaze',
-  'shippu',
-  'tsumujikaze',
-  'unmei_no_hari',
-  'makimodoshi',
-  'hoshiyomi',
-  'honoo_no_tsubute',
-  'kaen',
-  'honoo_no_mahoujin',
-  'shimo_no_noroi',
-  'hyouketsu',
-  'hikari_no_kabe',
-  'hansha_no_kagami',
-  'shukufuku',
-  'nusumi_no_kage',
-]);
-
-/** 相手1人を対象にする攻撃カードの効果 */
+/** 相手1人を対象にする攻撃カードの効果（つむじ風・闇の取引は別に扱う） */
 export const TARGET_ATTACKS: Record<string, AttackEffect> = {
   honoo_no_tsubute: { kind: 'back', steps: 2 },
   kaen: { kind: 'back', steps: 4 },
   shimo_no_noroi: { kind: 'frost' },
   hyouketsu: { kind: 'rest' },
   nusumi_no_kage: { kind: 'steal' },
+  boukyaku: { kind: 'forget' },
+  noroi_no_fuin: { kind: 'seal' },
+};
+
+/** 自分以外の全員を対象にする攻撃カードの効果 */
+export const ALL_ATTACKS: Record<string, AttackEffect> = {
+  bakuen: { kind: 'back', steps: 3 },
+  fubuki: { kind: 'blizzard' },
+};
+
+/** 罠を置くカード */
+export const TRAP_CARDS: Record<string, TrapKind> = {
+  honoo_no_mahoujin: 'fire',
+  itetsuku_yuka: 'ice',
+};
+
+/** 罠の種類から、その罠を置くカード */
+export const TRAP_CARD_OF: Record<TrapKind, string> = {
+  fire: 'honoo_no_mahoujin',
+  ice: 'itetsuku_yuka',
 };
 
 export const TRAP_BACK_STEPS = 3;
@@ -50,3 +51,6 @@ export function buildSharedDeck(cardIds: string[]): string[] {
 }
 
 export const MVP_CARD_IDS = CARD_DEFS.filter((c) => c.mvp).map((c) => c.id);
+
+/** 全27種類（マルチプレイの山札はこれを使う） */
+export const ALL_CARD_IDS = CARD_DEFS.map((c) => c.id);

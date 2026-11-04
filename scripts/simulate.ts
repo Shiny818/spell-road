@@ -3,12 +3,14 @@
 
 import forest from '../src/data/boards/forest.json';
 import { autoplay } from '../src/ai/autoplay';
-import { buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../src/core/cards';
+import { ALL_CARD_IDS, buildSharedDeck, getCardDef, MVP_CARD_IDS } from '../src/core/cards';
 import { createGame } from '../src/core/engine';
 import type { BoardDef } from '../src/core/types';
 
 const games = Number(process.argv[2] ?? 1000);
 const players = Number(process.argv[3] ?? 4);
+/** 3つ目に mvp と書くと、試作版の15種類だけで遊ぶ */
+const cardIds = process.argv[4] === 'mvp' ? MVP_CARD_IDS : ALL_CARD_IDS;
 const SECONDS_PER_TURN = 25;
 
 const rounds: number[] = [];
@@ -27,7 +29,7 @@ for (let seed = 1; seed <= games; seed++) {
     createGame({
       board: forest as BoardDef,
       players: Array.from({ length: players }, (_, i) => ({ name: `CPU${i}`, isCpu: true })),
-      deck: buildSharedDeck(MVP_CARD_IDS),
+      deck: buildSharedDeck(cardIds),
       seed,
     }),
   );
@@ -49,7 +51,7 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 const pct = (xs: number[], p: number) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) * p)];
 const avgTurns = avg(turns);
 
-console.log(`ボード: ${forest.name} / ${players}人 / ${games}ゲーム\n`);
+console.log(`ボード: ${forest.name} / ${players}人 / ${games}ゲーム / カード${cardIds.length}種類\n`);
 console.log(`ラウンド数   平均 ${avg(rounds).toFixed(1)}（10% ${pct(rounds, 0.1)} / 中央 ${pct(rounds, 0.5)} / 90% ${pct(rounds, 0.9)}）`);
 console.log(`手番の数     平均 ${avgTurns.toFixed(1)}`);
 console.log(

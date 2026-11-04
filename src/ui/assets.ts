@@ -15,8 +15,12 @@ export const ASSET = {
   attr: (attr: Attribute) => `${BASE}attr/${attr}.png`,
   dice: (n: number) => `${BASE}ui/dice_${n}.png`,
   trapFire: `${BASE}icon/trap_fire.png`,
+  trapIce: `${BASE}icon/trap_ice.png`,
   statusRest: `${BASE}icon/status_rest.png`,
   statusFrost: `${BASE}icon/status_frost.png`,
+  statusBlizzard: `${BASE}icon/status_blizzard.png`,
+  statusSeal: `${BASE}icon/status_seal.png`,
+  statusGuard: `${BASE}icon/status_guard.png`,
   cardBack: `${BASE}ui/card_back.png`,
   forestTile: `${BASE}bg/forest_tile.png`,
 };

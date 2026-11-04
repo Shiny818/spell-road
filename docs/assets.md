@@ -76,12 +76,15 @@
 | ファイル名 | 内容 | サイズ | いまの表示 |
 |---|---|---|---|
 | `icon/trap_fire.png` | 炎の魔法陣の罠（マスの上に置く） | 128×128 | 🔥 |
-| `icon/trap_ice.png` | 凍てつく床の罠（MVP外のカード用） | 128×128 | なし |
+| `icon/trap_ice.png` | 凍てつく床の罠（マスの上に置く） | 128×128 | 🧊 |
 | `icon/status_rest.png` | 1回休み（凍りついた） | 96×96 | 💤 |
 | `icon/status_frost.png` | 霜の呪い（次の出目-2） | 96×96 | ❄️ |
+| `icon/status_blizzard.png` | 吹雪（次の移動マス数が半分）。優先度 C | 96×96 | 🌨️ |
+| `icon/status_seal.png` | 呪いの封印（カードを使えない）。優先度 C | 96×96 | 🔒 |
+| `icon/status_guard.png` | 聖なる加護（攻撃を受けない）。優先度 C | 96×96 | ✨ |
 | `icon/crack.png` | 関所のひび | 96×96 | 文字で「ひび1」 |
 
-## 4. カードのイラスト　優先度 A（MVPの15種類）、C（残り12種類）
+## 4. カードのイラスト　27種類すべて組み込み済み
 
 カードの中央に入れる絵。カードの枠・名前・★は今のままプログラムで描く。
 
@@ -108,7 +111,7 @@
 | `card/shukufuku.png` | 祝福 | 光 | カードを2枚引く |
 | `card/nusumi_no_kage.png` | 盗みの影 | 闇 | 相手のカードを1枚奪う |
 
-**残りの12種類（後で）**: `tabi_no_kaze` 旅の風／`daisenpu` 大旋風／`baisoku` 倍速／`jikan_teishi` 時間停止／`bakuen` 爆炎／`itetsuku_yuka` 凍てつく床／`fubuki` 吹雪／`jouka` 浄化／`seinaru_kago` 聖なる加護／`boukyaku` 忘却／`yami_no_torihiki` 闇の取引／`noroi_no_fuin` 呪いの封印
+**残りの12種類（組み込み済み。元の画像は `assets-src/card/` に保管）**: `tabi_no_kaze` 旅の風／`daisenpu` 大旋風／`baisoku` 倍速／`jikan_teishi` 時間停止／`bakuen` 爆炎／`itetsuku_yuka` 凍てつく床／`fubuki` 吹雪／`jouka` 浄化／`seinaru_kago` 聖なる加護／`boukyaku` 忘却／`yami_no_torihiki` 闇の取引／`noroi_no_fuin` 呪いの封印
 
 ## 5. 属性アイコン　優先度 B
 
@@ -176,7 +179,8 @@
 | `bgm/forest.mp3` | はじまりの森でのゲーム中 |
 | `bgm/result.mp3` | 結果発表 |
 
-- 音を出す前に、画面のどこかに **音のオン／オフ切り替え** を付ける（スマホでいきなり鳴らないように、最初はオフ）。
+- 組み込み済み。効果音と同じ **音のオン／オフ** のボタンで一緒に切り替わる（最初はオフ）。
+- 音量は効果音より控えめ（`src/ui/sound.ts` の `BGM_VOLUME`）。
 
 ---
 

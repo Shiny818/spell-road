@@ -18,8 +18,9 @@ export function chooseCpuAction(s: GameState, player: number): Action {
 
   const pending = s.pending;
   if (pending?.kind === 'counter') {
-    // 入れ替えは反射しても意味がないので光の壁を優先
-    const prefer = pending.effect.kind === 'swap' ? ['hikari_no_kabe', 'hansha_no_kagami'] : ['hansha_no_kagami', 'hikari_no_kabe'];
+    // 入れ替え・取引は反射しても意味がないので光の壁を優先
+    const noReflect = pending.effect.kind === 'swap' || pending.effect.kind === 'trade';
+    const prefer = noReflect ? ['hikari_no_kabe', 'hansha_no_kagami'] : ['hansha_no_kagami', 'hikari_no_kabe'];
     for (const id of prefer) {
       const c = legal.find((a) => a.type === 'counter' && p.hand.find((h) => h.uid === a.uid)?.cardId === id);
       if (c) return c;
@@ -49,11 +50,28 @@ export function chooseCpuAction(s: GameState, player: number): Action {
   const leaderThreat = leaderDist < myDist || leaderDist <= 8;
   const onLeader = (a: PlayCard) => a.target === leader.index;
 
+  /** 自分より前にいる相手の数（全員への攻撃を使うかの目安） */
+  const aheadCount = opponents.filter((o) => distanceToGoal(s, o) < myDist).length;
+  /** いちばん価値の低い手札（闇の取引で渡す） */
+  const worstUid = (exclude: number) =>
+    [...p.hand].filter((c) => c.uid !== exclude).sort((a, b) => cardValue(a) - cardValue(b))[0]?.uid;
+
   const pickAttack = (): Action | undefined => {
     if (!leaderThreat) return undefined;
+    if (aheadCount >= 2 || (aheadCount >= 1 && opponents.length === 1)) {
+      const blast = findPlay('bakuen');
+      if (blast) return blast;
+    }
     if (isAtGate(s, leader)) {
       const frost = findPlay('shimo_no_noroi', onLeader);
       if (frost && !leader.statuses.frost) return frost;
+    } else if (!leader.statuses.blizzard && aheadCount >= 1) {
+      const storm = findPlay('fubuki');
+      if (storm) return storm;
+    }
+    if (!leader.statuses.sealed && leader.hand.length >= 2) {
+      const seal = findPlay('noroi_no_fuin', onLeader);
+      if (seal) return seal;
     }
     const swap = plays.find((a) => cardOf(a) === 'tsumujikaze');
     if (swap && myDist - distanceToGoal(s, s.players[swap.target!]) >= 4) return swap;
@@ -61,19 +79,35 @@ export function chooseCpuAction(s: GameState, player: number): Action {
       const rest = findPlay('hyouketsu', onLeader);
       if (rest) return rest;
     }
-    return (
-      findPlay('kaen', onLeader) ??
-      findPlay('honoo_no_tsubute', onLeader) ??
-      (leader.hand.length >= 2 ? findPlay('nusumi_no_kage', onLeader) : undefined)
-    );
+    const handAttack = (): Action | undefined => {
+      if (leader.hand.length < 2) return undefined;
+      const steal = findPlay('nusumi_no_kage', onLeader);
+      if (steal) return steal;
+      // 渡すのは、いちばん価値の低いカード。★1でなければ取引しない
+      const trade = findPlay('yami_no_torihiki', (a) => onLeader(a) && a.choice === worstUid(a.uid));
+      if (trade && getCardDef(p.hand.find((c) => c.uid === trade.choice)!.cardId).rarity === 1) return trade;
+      return findPlay('boukyaku', onLeader);
+    };
+    return findPlay('kaen', onLeader) ?? findPlay('honoo_no_tsubute', onLeader) ?? handAttack();
   };
 
   switch (s.phase) {
     case 'turnStart': {
+      // 霜・吹雪を受けていたら浄化
+      if (p.statuses.frost || p.statuses.blizzard) {
+        const cleanse = findPlay('jouka');
+        if (cleanse) return cleanse;
+      }
       const attack = pickAttack();
       if (attack) return attack;
+      // 先頭にいて、相手が攻撃カードを持っていそうなら守りを固める
+      const leading = opponents.every((o) => distanceToGoal(s, o) > myDist);
+      if (leading && opponents.some((o) => o.hand.length >= 3)) {
+        const guard = findPlay('seinaru_kago');
+        if (guard) return guard;
+      }
       if (!isAtGate(s, p) && myDist > 6) {
-        const move = findPlay('shippu') ?? findPlay('oikaze');
+        const move = (myDist > 10 ? findPlay('daisenpu') : undefined) ?? findPlay('shippu') ?? findPlay('oikaze');
         if (move) return move;
       }
       return { type: 'roll', player };
@@ -83,7 +117,10 @@ export function chooseCpuAction(s: GameState, player: number): Action {
       const value = s.turn.value!;
       if (isAtGate(s, p)) return chooseAtGate(s, player, value, plays, cardOf);
       // ちょうどゴールに届くなら星読み、カードマスに止まれるなら運命の針
-      const reach = (v: number) => landing(s, player, v + s.turn.moveBonus);
+      const reach = (v: number) => {
+        const steps = v + s.turn.moveBonus;
+        return landing(s, player, p.statuses.blizzard ? Math.max(1, Math.floor(steps / 2)) : steps);
+      };
       if (reach(value) !== 'goal') {
         const star = plays.find((a) => cardOf(a) === 'hoshiyomi' && reach(a.choice!) === 'goal');
         if (star) return star;
@@ -94,6 +131,9 @@ export function chooseCpuAction(s: GameState, player: number): Action {
             !isGoodSquare(s, reach(value)),
         );
         if (needle) return needle;
+        // 出目が大きいときに倍速
+        const double = findPlay('baisoku');
+        if (double && value >= 3) return double;
       }
       return { type: 'confirmMove', player };
     }
@@ -101,7 +141,12 @@ export function chooseCpuAction(s: GameState, player: number): Action {
     case 'turnEnd': {
       const attack = pickAttack();
       if (attack) return attack;
-      const trap = findPlay('honoo_no_mahoujin');
+      const again = findPlay('jikan_teishi');
+      if (again) return again;
+      // 1つ先が良いマスなら旅の風
+      const breeze = findPlay('tabi_no_kaze');
+      if (breeze && isGoodSquare(s, landing(s, player, 1))) return breeze;
+      const trap = findPlay('honoo_no_mahoujin') ?? findPlay('itetsuku_yuka');
       if (trap && opponents.some((o) => distanceToGoal(s, o) - myDist >= 1 && distanceToGoal(s, o) - myDist <= 8)) {
         return trap;
       }

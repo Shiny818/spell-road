@@ -1,5 +1,5 @@
 import forest from '../src/data/boards/forest.json';
-import { buildSharedDeck, MVP_CARD_IDS } from '../src/core/cards';
+import { ALL_CARD_IDS, buildSharedDeck } from '../src/core/cards';
 import { applyAction, createGame } from '../src/core/engine';
 import type { Action, BoardDef, GameState } from '../src/core/types';
 
@@ -10,7 +10,7 @@ export function setup(players = 2, seed = 1): GameState {
   const s = createGame({
     board: FOREST,
     players: Array.from({ length: players }, (_, i) => ({ name: `P${i}`, isCpu: true })),
-    deck: buildSharedDeck(MVP_CARD_IDS),
+    deck: buildSharedDeck(ALL_CARD_IDS),
     seed,
   });
   for (const p of s.players) {

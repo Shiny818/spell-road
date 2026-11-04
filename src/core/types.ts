@@ -57,6 +57,12 @@ export interface Statuses {
   rest: boolean;
   /** 次の出目 -2 */
   frost: boolean;
+  /** 吹雪: 次の移動マス数が半分（切り捨て、最低1） */
+  blizzard: boolean;
+  /** 封印: 次の自分のターンが終わるまでカードを使えない（カウンターも） */
+  sealed: boolean;
+  /** 加護（良い状態）: 次の自分のターンが始まるまで攻撃を受けない */
+  protected: boolean;
 }
 
 export interface PlayerState {
@@ -72,9 +78,12 @@ export interface PlayerState {
   coins: number;
 }
 
+/** 罠の種類。炎は3マス戻す、氷はそのマスで止める */
+export type TrapKind = 'fire' | 'ice';
+
 export interface Trap {
   owner: number;
-  kind: 'fire';
+  kind: TrapKind;
 }
 
 export type AttackEffect =
@@ -83,17 +92,24 @@ export type AttackEffect =
   | { kind: 'rest' }
   | { kind: 'steal' }
   | { kind: 'swap' }
-  | { kind: 'trap'; steps: number };
+  | { kind: 'blizzard' }
+  | { kind: 'forget' }
+  | { kind: 'seal' }
+  /** 闇の取引。giveUid は攻撃した人が渡すカード */
+  | { kind: 'trade'; giveUid: number }
+  | { kind: 'trap'; trap: TrapKind; steps: number };
+
+/** これから当てる攻撃（全員への攻撃は、1人ずつ順にカウンターを確認する） */
+export interface QueuedAttack {
+  target: number;
+  attacker: number;
+  cardId: string;
+  effect: AttackEffect;
+  source: 'card' | 'trap';
+}
 
 export type Pending =
-  | {
-      kind: 'counter';
-      target: number;
-      attacker: number;
-      cardId: string;
-      effect: AttackEffect;
-      source: 'card' | 'trap';
-    }
+  | ({ kind: 'counter' } & QueuedAttack)
   | { kind: 'exchange'; player: number; offer: CardInstance[] }
   | { kind: 'discard'; player: number; count: number };
 
@@ -104,8 +120,15 @@ export interface TurnState {
   dice: number[];
   value: number | null;
   frostPenalty: number;
-  twoDice: boolean;
+  /** 振るダイスの数（疾風で2、大旋風で3） */
+  diceCount: number;
   moveBonus: number;
+  /** 時間停止: このターンの後にもう一度自分のターン */
+  extraTurn: boolean;
+  /** 時間停止で得た追加のターン（カードは使えない） */
+  isExtra: boolean;
+  /** このターン中に封印を受けた（このターンの終わりでは解けない） */
+  keepSeal: boolean;
   /** 封印のひびが上限に達し、このターンは条件なしで関所を抜けられる */
   gateBroken: boolean;
 }
@@ -117,7 +140,7 @@ export interface GameResult {
 }
 
 export type GameEvent =
-  | { type: 'turnStart'; player: number; round: number }
+  | { type: 'turnStart'; player: number; round: number; extra?: boolean }
   | { type: 'skipTurn'; player: number }
   | { type: 'roll'; player: number; dice: number[]; value: number }
   | { type: 'cardPlayed'; player: number; cardId: string; target?: number; choice?: number }
@@ -128,10 +151,15 @@ export type GameEvent =
   | { type: 'gateFail'; player: number; gate: string; cracks: number }
   | { type: 'gateBroken'; player: number; gate: string }
   | { type: 'gatePass'; player: number; gate: string; to: string }
-  | { type: 'trapPlaced'; player: number; node: string }
-  | { type: 'trapTriggered'; player: number; node: string; owner: number }
+  | { type: 'trapPlaced'; player: number; node: string; kind: TrapKind }
+  | { type: 'trapTriggered'; player: number; node: string; owner: number; kind: TrapKind }
   | { type: 'countered'; player: number; cardId: string; attacker: number; reflected: boolean }
   | { type: 'statusApplied'; player: number; status: keyof Statuses }
+  | { type: 'cleansed'; player: number }
+  | { type: 'blocked'; player: number; attacker: number }
+  | { type: 'slowed'; player: number; steps: number }
+  | { type: 'forgotten'; player: number }
+  | { type: 'traded'; from: number; to: number }
   | { type: 'swapped'; a: number; b: number }
   | { type: 'stolen'; from: number; to: number }
   | { type: 'draw'; player: number; count: number }
@@ -154,6 +182,8 @@ export interface GameState {
   deck: CardInstance[];
   discard: CardInstance[];
   traps: Record<string, Trap>;
+  /** カウンターの確認待ちで、まだ当てていない攻撃 */
+  attackQueue: QueuedAttack[];
   rngState: number;
   nextUid: number;
   /** テスト・デバッグ用: 指定するとダイスの目をこの順に使う */

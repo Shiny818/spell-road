@@ -1,4 +1,4 @@
-// 効果音。素材は public/assets/se/ に置く（一覧は docs/assets.md）。
+// 効果音とBGM。素材は public/assets/se/ と public/assets/bgm/ に置く（一覧は docs/assets.md）。
 // スマホでいきなり鳴らないよう、最初は音オフ。オン・オフはこの端末に覚えておく。
 // 音が重なっても途切れないよう、Web Audio で鳴らす。読み込めない音は鳴らさないだけ。
 
@@ -33,6 +33,13 @@ const MIN_INTERVAL_MS = 120;
 const STORAGE_KEY = 'spell-road.sound';
 
 const BASE = `${import.meta.env.BASE_URL}assets/se/`;
+const BGM_BASE = `${import.meta.env.BASE_URL}assets/bgm/`;
+
+/** BGMの種類（タイトル・はじまりの森・結果発表） */
+export type BgmName = 'title' | 'forest' | 'result';
+
+/** BGMの音量（0〜1）。効果音が聞こえるよう控えめにする */
+const BGM_VOLUME = 0.35;
 
 let ctx: AudioContext | null = null;
 const buffers = new Map<SoundName, AudioBuffer>();
@@ -40,6 +47,10 @@ const lastPlayed = new Map<SoundName, number>();
 let enabled = readSetting();
 let loading: Promise<void> | null = null;
 const listeners = new Set<(on: boolean) => void>();
+/** 今の画面で流したいBGM */
+let bgmWanted: BgmName | null = null;
+/** BGMは長いので、少しずつ読み込みながら鳴らせる audio 要素で流す */
+const bgmTracks = new Map<BgmName, HTMLAudioElement>();
 
 function readSetting(): boolean {
   try {
@@ -62,6 +73,7 @@ export function setSound(on: boolean): void {
     // 保存できなくても、この画面の間は切り替わる
   }
   if (on) unlock();
+  syncBgm();
   for (const fn of listeners) fn(on);
 }
 
@@ -82,6 +94,35 @@ export function unlock(): void {
   }
   if (ctx.state === 'suspended') void ctx.resume();
   loading ??= loadAll(ctx);
+  syncBgm();
+}
+
+/** 画面に合わせてBGMを切り替える（null で止める）。音がオフなら、オンにしたときに流れ始める */
+export function playBgm(name: BgmName | null): void {
+  if (name === bgmWanted) return;
+  bgmWanted = name;
+  for (const [n, track] of bgmTracks) {
+    if (n === name) continue;
+    track.pause();
+    track.currentTime = 0;
+  }
+  syncBgm();
+}
+
+function syncBgm(): void {
+  if (!enabled || !bgmWanted) {
+    for (const track of bgmTracks.values()) track.pause();
+    return;
+  }
+  let track = bgmTracks.get(bgmWanted);
+  if (!track) {
+    track = new Audio(`${BGM_BASE}${bgmWanted}.mp3`);
+    track.loop = true;
+    track.volume = BGM_VOLUME;
+    bgmTracks.set(bgmWanted, track);
+  }
+  // スマホではタップの前は鳴らせないことがある。そのときは次のタップ（unlock）でもう一度試す
+  if (track.paused) track.play().catch(() => {});
 }
 
 async function loadAll(audio: AudioContext): Promise<void> {
@@ -139,8 +180,15 @@ export function soundForEvent(e: GameEvent, prev: GameEvent | undefined, me: num
       // 罠を踏んだときは罠の音だけにする
       return prev?.type === 'trapTriggered' ? null : 'attack';
     case 'statusApplied':
+      // 加護は良い状態なので守りの音
+      return e.status === 'protected' ? 'guard' : 'attack';
     case 'stolen':
+    case 'forgotten':
+    case 'traded':
       return 'attack';
+    case 'cleansed':
+    case 'blocked':
+      return 'guard';
     case 'trapTriggered':
       return 'trap';
     case 'draw':

@@ -38,7 +38,11 @@ export function moodByEvent(e: GameEvent, player: number): Expression | null {
       if (e.attacker === player) return 'sad';
       return null;
     case 'pushedBack':
+    case 'forgotten':
+    case 'slowed':
       return e.player === player ? 'sad' : null;
+    case 'blocked':
+      return e.player === player ? 'brave' : null;
     default:
       return null;
   }
