@@ -9,6 +9,7 @@ import { actionKey, applyAction, createGame, expectedActor, getLegalActions } fr
 import { redactFor } from '../core/view';
 import type { Action, BoardDef, GameState } from '../core/types';
 import { MAX_PLAYERS, PROTOCOL_VERSION, type ClientMessage, type Clock, type HostMessage, type SeatInfo } from './protocol';
+import { SAVE_VERSION, type SavedRoom, type SaveStore } from './save';
 import { toLocalClock, type GameSession, type GameView, type LocalClock } from './session';
 import { withHeartbeat, type HostSide, type HostTransport } from './transport';
 
@@ -73,6 +74,10 @@ export class HostSession implements GameSession {
   private clockTimer: ReturnType<typeof setTimeout> | null = null;
   private watchWaiter: (() => void) | null = null;
   private readonly timing: HostTiming;
+  /** 保存から開き直した直後で、参加者が戻るのを待っている（resume() で始まる） */
+  private waiting = false;
+  /** この部屋が保存を書いた（閉じるときに消してよい） */
+  private ownsSave = false;
 
   constructor(
     hostName: string,
@@ -80,15 +85,52 @@ export class HostSession implements GameSession {
     private readonly transport: HostTransport | null = null,
     private readonly callbacks: HostCallbacks = {},
     timing: Partial<HostTiming> = {},
+    /** 通信対戦の途中経過を保存する先（ホストの画面が閉じても再開できるように） */
+    private readonly store: SaveStore | null = null,
   ) {
     this.timing = { ...DEFAULT_TIMING, ...timing };
     this.seatList = [this.newSeat(hostName || 'プレイヤー1', 'human', null, true)];
     transport?.onConnection((conn) => this.accept(conn));
   }
 
+  /**
+   * 保存から部屋を開き直す。transport は保存と同じ部屋コードで開いたものを渡す。
+   * 参加者が戻るのを待つ状態で始まるので、続きを始めるには resume() を呼ぶ
+   * （人の席が全員戻れば、自動で始まる）。
+   */
+  static restore(
+    save: SavedRoom,
+    view: GameView,
+    transport: HostTransport,
+    callbacks: HostCallbacks = {},
+    timing: Partial<HostTiming> = {},
+    store: SaveStore | null = null,
+  ): HostSession {
+    const host = new HostSession(save.seats[0].name, view, transport, callbacks, timing, store);
+    host.seatList = save.seats.map((s) => host.newSeat(s.name, s.kind, s.clientId, s.host));
+    host.full = save.state;
+    host.gameNo = save.gameNo;
+    // 古い画面からの操作を受け付けないよう、番号を進めておく
+    host.seq = save.seq + 1;
+    host.waiting = true;
+    host.ownsSave = true;
+    return host;
+  }
+
   get state(): GameState | null {
+    if (this.waiting) return null;
     if (this.full && this.mine?.log !== this.full.log) this.mine = { ...redactFor(this.full, this.me), log: this.full.log };
     return this.full ? this.mine : null;
+  }
+
+  /** 保存から開き直して、参加者が戻るのを待っているか */
+  get paused(): boolean {
+    return this.waiting;
+  }
+
+  /** まだ戻っていない参加者の席（ホスト・CPUは含まない） */
+  get missing(): SeatInfo[] {
+    return this.seats.filter((s) => s.kind === 'human' && !s.host && !s.connected);
   }
 
   /** テスト用: すべてが分かる状態 */
@@ -115,7 +157,7 @@ export class HostSession implements GameSession {
   }
 
   get legal(): Action[] {
-    if (this.busy || !this.full || this.stopped) return [];
+    if (this.busy || !this.full || this.stopped || this.waiting) return [];
     return this.seatList[this.me].autopilot ? [] : getLegalActions(this.full, this.me);
   }
 
@@ -138,7 +180,25 @@ export class HostSession implements GameSession {
     });
     this.gameNo++;
     this.seq = 0;
+    this.waiting = false;
     for (const s of this.seatList) s.watched = -1;
+    const game = this.gameNo;
+    await this.callbacks.onGameStart?.(this.state!);
+    if (this.stopped || game !== this.gameNo) return;
+    await this.publish([]);
+  }
+
+  /**
+   * 保存から開き直したゲームの続きを始める。戻っていない人の席は、CPUが代わりに操作する
+   * （人の席が全員戻ったときは、自動で呼ばれる）
+   */
+  async resume(): Promise<void> {
+    if (!this.waiting || !this.full || this.stopped) return;
+    this.waiting = false;
+    for (const s of this.seatList) {
+      s.autopilot = false;
+      s.watched = -1;
+    }
     const game = this.gameNo;
     await this.callbacks.onGameStart?.(this.state!);
     if (this.stopped || game !== this.gameNo) return;
@@ -147,14 +207,24 @@ export class HostSession implements GameSession {
 
   /** 自分（ホスト）の操作 */
   act(action: Action): void {
-    if (action.player !== this.me || !this.isLegal(action)) return;
+    if (this.waiting || action.player !== this.me || !this.isLegal(action)) return;
     void this.apply(action);
   }
 
-  /** 部屋を閉じる・ゲームをやめる */
+  /** テスト用: ホストの画面が急に閉じたことにする（参加者には何も知らせず、保存も残す） */
+  halt(): void {
+    this.stopped = true;
+    this.clearTimers();
+    for (const s of this.seatList) s.conn?.close();
+    this.transport?.close();
+  }
+
+  /** 部屋を閉じる・ゲームをやめる（保存も消える） */
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
+    // 保存を消すのは、この部屋が保存したものだけ（ゲームを始める前に閉じても、前のゲームの保存は残す）
+    if (this.ownsSave) this.store?.clear();
     this.clearTimers();
     const conns = this.seatList.map((s) => s.conn);
     for (const c of conns) c?.send({ t: 'closed' });
@@ -191,6 +261,7 @@ export class HostSession implements GameSession {
     const seq = this.seq;
     const game = this.gameNo;
     this.busy = true;
+    this.persist();
     for (let i = 0; i < this.seatList.length; i++) this.sendUpdate(i, events);
     const mine = this.state!;
     this.view.render(mine);
@@ -200,6 +271,26 @@ export class HostSession implements GameSession {
     this.busy = false;
     this.view.render(mine);
     this.next();
+  }
+
+  /** ホストの画面が閉じても再開できるよう、今の状態を端末に保存する。ゲームが終わったら消す */
+  private persist(): void {
+    if (!this.store || !this.transport || !this.full) return;
+    this.ownsSave = true;
+    if (this.full.phase === 'gameOver' || this.full.result) {
+      this.store.clear();
+      return;
+    }
+    this.store.save({
+      v: SAVE_VERSION,
+      protocol: PROTOCOL_VERSION,
+      savedAt: Date.now(),
+      code: this.transport.code,
+      gameNo: this.gameNo,
+      seq: this.seq,
+      seats: this.seatList.map((s) => ({ name: s.name, kind: s.kind, host: s.host, clientId: s.clientId })),
+      state: this.full,
+    });
   }
 
   private sendUpdate(seat: number, events: GameState['log']): void {
@@ -338,11 +429,13 @@ export class HostSession implements GameSession {
       this.seatList.push(seat);
     }
     this.seatsChanged();
-    if (this.full) {
+    if (this.full && !this.waiting) {
       const i = this.seatList.indexOf(seat);
       this.sendUpdate(i, []);
       this.sendPrompt(i);
     }
+    // 保存から開き直した部屋で、人の席が全員戻ったら、続きを始める
+    if (this.waiting && this.missing.length === 0) void this.resume();
     return seat;
   }
 
@@ -373,7 +466,7 @@ export class HostSession implements GameSession {
       this.seatList = this.seatList.filter((s) => s !== seat);
     }
     this.seatsChanged();
-    if (!this.full) return;
+    if (!this.full || this.waiting) return;
     this.watchWaiter?.();
     // その人の操作待ちだったら、CPUが代わりに操作する
     const actor = expectedActor(this.full);
@@ -385,7 +478,8 @@ export class HostSession implements GameSession {
 
   private seatsChanged(): void {
     const seats = this.seats;
-    if (!this.full) {
+    // 待合室、または保存から開き直して参加者を待っている間は、待合室として扱う
+    if (!this.full || this.waiting) {
       this.seatList.forEach((s, i) => s.conn?.send({ t: 'lobby', you: i, seats }));
       this.callbacks.onLobby?.(seats);
       return;

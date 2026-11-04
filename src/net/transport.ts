@@ -25,7 +25,8 @@ export interface HostTransport {
 /** 部屋コードでホストにつなぐ。つながらなければ NetError で失敗する */
 export type ConnectToHost = (code: string) => Promise<ClientSide>;
 
-export type NetErrorKind = 'notFound' | 'network' | 'timeout';
+/** taken: 再開しようとした部屋コードを、まだ別の画面が使っている */
+export type NetErrorKind = 'notFound' | 'network' | 'timeout' | 'taken';
 
 export class NetError extends Error {
   constructor(public readonly kind: NetErrorKind) {
@@ -36,6 +37,7 @@ export class NetError extends Error {
 export const NET_ERROR_TEXT: Record<NetErrorKind, string> = {
   notFound: 'その部屋コードの部屋が見つかりません。コードを確かめてください。',
   network: 'つながりませんでした。インターネットとWi-Fiを確かめてください。',
+  taken: '前の画面がまだ開いたままかもしれません。他のタブやウィンドウを閉じてから、もう一度試してください。',
   timeout:
     'ホストにつながりませんでした。ホストと同じWi-Fiにつないでいるか確かめてください（フリーWi-Fiやゲスト用Wi-Fiでは、端末どうしがつながらないことがあります）。',
 };

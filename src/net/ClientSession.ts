@@ -22,11 +22,14 @@ export interface ClientOptions {
   heartbeat: boolean;
   /** つなぎ直す間隔 */
   retryMs: number;
-  /** ホストが見つからない状態がこの回数続いたら、あきらめる */
-  maxNotFound: number;
+  /**
+   * 切れてからこの時間たってもつながらなければ、あきらめる。
+   * ホストが画面を閉じても、同じ部屋コードで開き直して再開できるので、長めに待つ
+   */
+  giveUpMs: number;
 }
 
-const DEFAULT_OPTIONS: ClientOptions = { heartbeat: true, retryMs: 2500, maxNotFound: 12 };
+const DEFAULT_OPTIONS: ClientOptions = { heartbeat: true, retryMs: 2500, giveUpMs: 10 * 60_000 };
 
 export class ClientSession implements GameSession {
   readonly isHost = false;
@@ -94,9 +97,9 @@ export class ClientSession implements GameSession {
   }
 
   private async reconnect(): Promise<void> {
-    this.callbacks.onStatus?.('ホストとの通信が切れました。つなぎ直しています…');
+    this.callbacks.onStatus?.('ホストとの通信が切れました。つなぎ直しています…（ホストが戻れば、自動で続きから遊べます）');
     if (this.state) this.view.render(this.state);
-    let notFound = 0;
+    const since = Date.now();
     while (!this.leaving) {
       await new Promise((r) => setTimeout(r, this.options.retryMs));
       if (this.leaving) return;
@@ -104,9 +107,9 @@ export class ClientSession implements GameSession {
         this.attach(await this.connectTo(this.code));
         this.callbacks.onStatus?.(null);
         return;
-      } catch (e) {
-        if (e instanceof NetError && e.kind === 'notFound' && ++notFound >= this.options.maxNotFound) {
-          this.end('ホストが見つからなくなりました。ゲームを終わります。');
+      } catch {
+        if (Date.now() - since >= this.options.giveUpMs) {
+          this.end('ホストと長い間つながらなかったので、ゲームを終わります。');
           return;
         }
       }
@@ -126,6 +129,8 @@ export class ClientSession implements GameSession {
         this.me = msg.you;
         this.seats = msg.seats;
         this.callbacks.onLobby?.(msg.seats, msg.you);
+        // ゲームの途中でこれが届くのは、ホストが保存から部屋を開き直して、みんなを待っているとき
+        if (this.state) this.callbacks.onStatus?.('ホストが再開の準備をしています。みんながそろうと続きが始まります…');
         break;
       case 'seats':
         this.seats = msg.seats;
@@ -134,6 +139,7 @@ export class ClientSession implements GameSession {
         break;
       case 'update':
         this.enqueue(async () => {
+          this.callbacks.onStatus?.(null);
           if (msg.game !== this.game) {
             this.game = msg.game;
             await this.callbacks.onGameStart?.(msg.state);

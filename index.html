@@ -35,6 +35,12 @@
               <input id="room-code" type="text" maxlength="7" placeholder="部屋コード" autocomplete="off" autocapitalize="characters" spellcheck="false" />
               <button id="join-room" class="btn">入る</button>
             </div>
+            <div id="resume-box" class="hidden">
+              <div class="note">前のゲームが途中で止まっています</div>
+              <div id="resume-info" class="note"></div>
+              <button id="resume-room" class="btn primary">前のゲームを再開する</button>
+              <div class="note">新しく部屋を作ってゲームを始めると、この保存は消えます</div>
+            </div>
           </div>
           <p id="title-message" class="note"></p>
         </div>

@@ -809,6 +809,41 @@ img.speaker-img {
   color: var(--ink);
 }
 
+/* 前のゲームの再開 */
+#resume-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  text-align: center;
+}
+
+#resume-box.hidden {
+  display: none;
+}
+
+#net-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+#net-status.hidden {
+  display: none;
+}
+
+#net-status .net-leave {
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
 #title-message:empty {
   display: none;
 }

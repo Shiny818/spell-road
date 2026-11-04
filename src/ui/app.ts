@@ -8,6 +8,7 @@ import { ClientSession } from '../net/ClientSession';
 import { HostSession } from '../net/HostSession';
 import { connectToRoom, openRoom } from '../net/peer';
 import { MAX_PLAYERS, normalizeRoomCode, type SeatInfo } from '../net/protocol';
+import { localSaveStore } from '../net/save';
 import type { GameSession, GameView } from '../net/session';
 import { NET_ERROR_TEXT, NetError } from '../net/transport';
 import { BoardScene, PIXEL_RATIO } from '../scenes/BoardScene';
@@ -67,6 +68,7 @@ function button(label: string | (HTMLElement | string)[], onClick: () => void, c
 
 export class App implements GameView {
   private scene = new BoardScene();
+  private readonly store = localSaveStore();
   private phaser: Phaser.Game | null = null;
   private session: GameSession | null = null;
   /** いま開いている確認画面の種類（操作できなくなったら閉じるため） */
@@ -108,6 +110,12 @@ export class App implements GameView {
       if (e.key === 'Enter') void this.joinRoom(onlineName());
     });
     $('#lobby-leave').addEventListener('click', () => this.leave());
+    $('#resume-room').addEventListener('click', () => void this.resumeRoom());
+    this.refreshResume();
+    // 画面が裏に回ると画面を消さない設定は自動で解除されるので、戻ってきたらかけ直す
+    document.addEventListener('visibilitychange', () => {
+      if (this.wantAwake && document.visibilityState === 'visible') void this.requestWakeLock();
+    });
     setInterval(() => this.renderClock(), 250);
   }
 
@@ -140,16 +148,63 @@ export class App implements GameView {
     this.setTitleBusy('部屋を作っています…');
     try {
       const transport = await openRoom();
-      const host = new HostSession(name, this, transport, {
-        onLobby: (seats) => this.renderLobby(seats, 0),
-        onGameStart: (s) => this.onGameStart(s),
-      });
+      const host = new HostSession(
+        name,
+        this,
+        transport,
+        { onLobby: (seats) => this.renderLobby(seats, 0), onGameStart: (s) => this.onGameStart(s) },
+        {},
+        this.store,
+      );
       this.session = host;
+      this.keepAwake();
       this.setTitleBusy(null);
       this.showLobby(transport.code);
       this.renderLobby(host.seats, 0);
     } catch (e) {
       this.setTitleBusy(null, e instanceof NetError ? NET_ERROR_TEXT[e.kind] : '部屋を作れませんでした。');
+    }
+  }
+
+  /** 前のゲームの保存があれば、タイトル画面に「再開する」を出す */
+  private refreshResume(): void {
+    const save = this.store.load();
+    $('#resume-box').classList.toggle('hidden', !save);
+    if (!save) return;
+    const names = save.seats.map((s) => s.name).join('・');
+    $('#resume-info').textContent = `部屋 ${save.code}（${save.state.round}ラウンド目）／ ${names}`;
+  }
+
+  /** 保存から部屋を開き直して、前のゲームの続きを始める */
+  private async resumeRoom(): Promise<void> {
+    const save = this.store.load();
+    if (!save) {
+      this.refreshResume();
+      return;
+    }
+    this.setTitleBusy('部屋を開き直しています…（1分ほどかかることがあります）');
+    try {
+      const transport = await openRoom(save.code);
+      const host = HostSession.restore(
+        save,
+        this,
+        transport,
+        { onLobby: (seats) => this.renderLobby(seats, 0), onGameStart: (s) => this.onGameStart(s) },
+        {},
+        this.store,
+      );
+      this.session = host;
+      this.keepAwake();
+      this.setTitleBusy(null);
+      if (host.missing.length === 0) {
+        await this.showGameScreen();
+        await host.resume();
+      } else {
+        this.showLobby(save.code);
+        this.renderLobby(host.seats, 0);
+      }
+    } catch (e) {
+      this.setTitleBusy(null, e instanceof NetError ? NET_ERROR_TEXT[e.kind] : '部屋を開き直せませんでした。');
     }
   }
 
@@ -207,13 +262,34 @@ export class App implements GameView {
         el('li', { style: `--pc:${PLAYER_COLORS[i]}` }, [
           face(i),
           el('span', { class: 'lobby-name', text: s.name }),
-          el('span', { class: 'lobby-tag', text: [s.host ? 'ホスト' : '', i === you ? 'あなた' : ''].filter(Boolean).join('・') }),
+          el('span', {
+            class: 'lobby-tag',
+            text: [s.host ? 'ホスト' : '', s.kind === 'cpu' ? 'CPU' : '', i === you ? 'あなた' : '', s.connected ? '' : 'つなぎ直し待ち']
+              .filter(Boolean)
+              .join('・'),
+          }),
         ]),
       ),
     );
     const host = this.session instanceof HostSession ? this.session : null;
-    $('#lobby-leave').textContent = host ? '部屋を閉じる' : '部屋を出る';
     const controls = $('#lobby-controls');
+    // 保存から開き直した部屋で、参加者が戻るのを待っている
+    if (host?.paused) {
+      $('#lobby-leave').textContent = '再開をやめて閉じる';
+      controls.replaceChildren(
+        el('p', { class: 'note', text: '前のゲームを再開します。参加者に、同じ部屋コードで入り直してもらってください（画面を開いたままの人は、自動で戻ります）。' }),
+        el('p', { class: 'note', text: 'そろうと自動で続きが始まります。待たずに始めると、戻っていない人の席はCPUが代わりに操作します。' }),
+        button(
+          'いるメンバーで再開',
+          () => {
+            void this.showGameScreen().then(() => host.resume());
+          },
+          'primary big',
+        ),
+      );
+      return;
+    }
+    $('#lobby-leave').textContent = host ? '部屋を閉じる' : '部屋を出る';
     if (!host) {
       controls.replaceChildren(el('p', { class: 'note', text: 'ホストがゲームを始めるのを待っています…' }));
       return;
@@ -250,9 +326,11 @@ export class App implements GameView {
   private leave(text?: string): void {
     this.session?.stop();
     this.session = null;
+    this.releaseAwake();
     this.setNetStatus(null);
     this.hideModal();
     delete $('#lobby-controls').dataset.cpu;
+    this.refreshResume();
     this.showScreen('title');
     this.setTitleBusy(null);
     playBgm('title');
@@ -261,11 +339,45 @@ export class App implements GameView {
     }
   }
 
-  /** 通信の状態（つなぎ直し中など）を画面の上に出す */
+  /** 通信の状態（つなぎ直し中など）を画面の上に出す。参加者には、自分で抜けるボタンも付ける */
   private setNetStatus(text: string | null): void {
     const bar = $('#net-status');
     bar.classList.toggle('hidden', !text);
-    bar.textContent = text ?? '';
+    if (!text) {
+      bar.replaceChildren();
+      return;
+    }
+    const children: (HTMLElement | string)[] = [el('span', { text })];
+    if (this.session instanceof ClientSession) children.push(button('待つのをやめて抜ける', () => this.leave(), 'net-leave'));
+    bar.replaceChildren(...children);
+  }
+
+  // ============================================================
+  // 画面を消さない（ホストの画面が消えると、全員のゲームが止まるため）
+  // ============================================================
+
+  private wakeLock: WakeLockSentinel | null = null;
+  private wantAwake = false;
+
+  private keepAwake(): void {
+    if (this.wantAwake) return;
+    this.wantAwake = true;
+    void this.requestWakeLock();
+  }
+
+  private async requestWakeLock(): Promise<void> {
+    try {
+      if (this.wakeLock && !this.wakeLock.released) return;
+      this.wakeLock = (await navigator.wakeLock?.request('screen')) ?? null;
+    } catch {
+      // 使えない端末・許可されなかったときは、何もしない
+    }
+  }
+
+  private releaseAwake(): void {
+    this.wantAwake = false;
+    void this.wakeLock?.release().catch(() => {});
+    this.wakeLock = null;
   }
 
   private async showGameScreen(): Promise<void> {

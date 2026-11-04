@@ -57,15 +57,32 @@ function wrap<In, Out>(dc: DataConnection, onClosed: () => void = () => {}): Con
   };
 }
 
-/** 部屋を作る。部屋コードがぶつかったら作り直す */
-export async function openRoom(): Promise<HostTransport> {
+/** 保存から部屋を開き直すとき、前の登録が仲介サーバーから消えるのを待つ回数と間隔 */
+const REOPEN_ATTEMPTS = 20;
+const REOPEN_WAIT_MS = 3000;
+
+/**
+ * 部屋を作る。部屋コードがぶつかったら作り直す。
+ * reuseCode を渡すと、その部屋コードで開き直す（前のホストの登録が残っていれば、消えるまで待つ）。
+ * 待っても登録が消えない（別の画面が使っている）ときは NetError('taken') で失敗する。
+ */
+export async function openRoom(reuseCode?: string): Promise<HostTransport> {
   for (let attempt = 0; ; attempt++) {
-    const code = makeRoomCode();
+    const code = reuseCode ?? makeRoomCode();
     let peer: Peer;
     try {
       peer = await openPeer(ID_PREFIX + code);
     } catch (err) {
-      if (errorType(err) === 'unavailable-id' && attempt < 5) continue;
+      if (errorType(err) === 'unavailable-id') {
+        if (reuseCode) {
+          if (attempt + 1 < REOPEN_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, REOPEN_WAIT_MS));
+            continue;
+          }
+          throw new NetError('taken');
+        }
+        if (attempt < 5) continue;
+      }
       throw new NetError('network');
     }
     let accept: (conn: HostSide) => void = () => {};
